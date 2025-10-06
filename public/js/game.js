@@ -1,7 +1,7 @@
 // Configuration - CHANGE THIS TO YOUR RAILWAY SERVER URL
-const SERVER_URL = window.location.origin; 
+//const SERVER_URL = window.location.origin; 
 // For local development: 
-const SERVER_URL = 'http://localhost:5500';
+const SERVER_URL = 'http://localhost:3000';
 
 // Socket.io connection
 let socket;
