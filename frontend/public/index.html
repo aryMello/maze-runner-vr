@@ -14,8 +14,8 @@
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
   
   <!-- Custom styles and scripts -->
-  <link rel="stylesheet" href="./css/style.css">
-  <script src="./js/game.js" defer></script>
+  <link rel="stylesheet" href="/frontend/public/css/style.css">
+  <script src="/frontend/public/js/game.js" defer></script>
 </head>
 <body>
 
@@ -81,19 +81,19 @@
     <!-- Assets -->
     <a-assets>
       <!-- Textures -->
-      <img id="grass-texture" src="./assets/img/floor-dark.png" crossorigin="anonymous">
-      <img id="wall-texture" src="./assets/img/brick.png" crossorigin="anonymous">
-      <img id="sky-texture" src="./assets/img/sky.png" crossorigin="anonymous">
+      <img id="grass-texture" src="/frontend/public/assets/img/floor.png" crossorigin="anonymous">
+      <img id="wall-texture" src="/frontend/public/assets/img/brick.png" crossorigin="anonymous">
+      <img id="sky-texture" src="/frontend/public/assets/img/sky.png" crossorigin="anonymous">
       
       <!-- Audio -->
-      <audio id="footstep-sound" src="./assets/sounds/footstep.mp3" preload="auto"></audio>
-      <audio id="collect-sound" src="./assets/sounds/collect.mp3" preload="auto"></audio>
-      <audio id="ambient-sound" src="./assets/sounds/ambient.mp3" preload="auto"></audio>
-      <audio id="win-sound" src="./assets/sounds/victory.mp3" preload="auto"></audio>
+      <audio id="footstep-sound" src="/frontend/public/assets/sounds/footstep.mp3" preload="auto"></audio>
+      <audio id="collect-sound" src="/frontend/public/assets/sounds/collect.mp3" preload="auto"></audio>
+      <audio id="ambient-sound" src="/frontend/public/assets/sounds/ambient.mp3" preload="auto"></audio>
+      <audio id="win-sound" src="/frontend/public/assets/sounds/victory.mp3" preload="auto"></audio>
     </a-assets>
 
     <!-- Camera and controls -->
-    <a-entity id="rig" position="0 1.6 0">
+    <a-entity id="rig" position="0 3 0">
       <a-camera id="player-camera" look-controls wasd-controls="acceleration: 30">
         <!-- Cursor for VR interaction -->
         <a-entity cursor="fuse: true; fuseTimeout: 750"
@@ -115,7 +115,7 @@
     </a-sound>
 
     <!-- Sky with texture -->
-    <a-sky src="#sky-texture" rotation="0 -90 0"></a-sky>
+    <a-sky src="#sky-texture" rotation="0 90 0"></a-sky>
 
     <!-- Ground with texture -->
     <a-plane id="ground" 
