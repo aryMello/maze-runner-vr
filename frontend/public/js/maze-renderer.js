@@ -3,6 +3,7 @@ class MazeRenderer {
   constructor() {
     this.mazeContainer = document.getElementById("maze");
     this.treasuresContainer = document.getElementById("treasures");
+    this.rendered = false;
   }
 
   convertMazeToWalls(mazeGrid) {
@@ -27,7 +28,13 @@ class MazeRenderer {
   }
 
   renderMaze() {
-    if (!this.mazeContainer) return;
+    if (!this.mazeContainer) {
+      this.mazeContainer = document.getElementById("maze");
+      if (!this.mazeContainer) {
+        Utils.logWarn("⚠️ Maze container not ready yet");
+        return;
+      }
+    }
 
     this.mazeContainer.innerHTML = "";
 
@@ -50,11 +57,18 @@ class MazeRenderer {
       this.mazeContainer.appendChild(wallEl);
     });
 
+    this.rendered = true;
     Utils.logInfo(`Renderizadas ${walls.length} paredes`);
   }
 
   renderTreasures() {
-    if (!this.treasuresContainer) return;
+    if (!this.treasuresContainer) {
+      this.treasuresContainer = document.getElementById("treasures");
+      if (!this.treasuresContainer) {
+        Utils.logWarn("⚠️ Treasures container not ready yet");
+        return;
+      }
+    }
 
     this.treasuresContainer.innerHTML = "";
 

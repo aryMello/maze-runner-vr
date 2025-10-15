@@ -15,6 +15,15 @@ class PlayerManager {
   }
 
   updatePlayerEntities() {
+    // Check if container exists (A-Frame scene loaded)
+    if (!this.playersContainer) {
+      this.playersContainer = document.getElementById("players");
+      if (!this.playersContainer) {
+        Utils.logWarn("⚠️ Players container not ready yet");
+        return;
+      }
+    }
+
     const playerArray = Object.values(gameState.players);
     playerArray.forEach((player, idx) => {
       this.updatePlayerEntity(player.id, idx);

@@ -92,7 +92,11 @@ class WSClient {
   handleMessage(event) {
     try {
       const data = JSON.parse(event.data);
-      Utils.logDebug("📨 Received:", data.event || data.type, data);
+      const eventType = data.event || data.type;
+
+      // Log with formatted JSON
+      Utils.logDebug("📨 Received:", eventType);
+      console.log(JSON.stringify(data, null, 2));
 
       // Trigger event based on message structure
       if (data.event) {
@@ -164,14 +168,17 @@ class WSClient {
     }
 
     // Format message according to server expectations: {type, payload}
-    const message = JSON.stringify({
+    const messageObj = {
       type: event,
       payload: data,
-    });
+    };
+
+    const message = JSON.stringify(messageObj);
 
     try {
       this.ws.send(message);
-      Utils.logDebug("📤 Sent:", event, data);
+      Utils.logDebug("📤 Sent:", event);
+      console.log(JSON.stringify(messageObj, null, 2));
     } catch (e) {
       Utils.logError("Failed to send message:", e);
     }
@@ -191,25 +198,95 @@ class WSClient {
 
     // Room events
     this.on("room_created", (data) => {
-      Utils.logInfo("🏠 Room created:", data);
-      gameState.setRoom(data.payload?.code || data.code);
-      gameState.setPlayerId(data.payload?.room?.host || data.playerId);
-      if (data.payload?.room) {
-        gameState.setMaze(data.payload.room.maze);
-        gameState.setTreasures(data.payload.room.treasures);
-        gameState.updatePlayers(data.payload.room.players);
+      Utils.logInfo("🏠 Room created");
+
+      const payload = data.payload || data;
+      const room = payload.room || payload;
+
+      // Set room code
+      gameState.setRoom(payload.code || room.code);
+
+      // Set player ID
+      gameState.setPlayerId(room.host || payload.host);
+
+      // Set maze, treasures and players data (store for later rendering)
+      if (room.maze) {
+        Utils.logInfo("🗺️ Setting maze from room_created");
+        gameState.setMaze(room.maze);
       }
+
+      if (room.treasures) {
+        Utils.logInfo("💎 Setting treasures from room_created");
+        gameState.setTreasures(room.treasures);
+      }
+
+      if (room.players) {
+        Utils.logInfo("👥 Setting players from room_created");
+        gameState.updatePlayers(room.players);
+      }
+
+      // Try to render after a short delay to ensure A-Frame scene is ready
+      setTimeout(() => {
+        if (gameState.maze && gameState.maze.length > 0) {
+          Utils.logInfo("🎨 Rendering maze...");
+          mazeRenderer.renderMaze();
+        }
+
+        if (gameState.treasures && gameState.treasures.length > 0) {
+          Utils.logInfo("💎 Rendering treasures...");
+          mazeRenderer.renderTreasures();
+        }
+
+        if (Object.keys(gameState.players).length > 0) {
+          Utils.logInfo("🎮 Rendering player entities...");
+          playerManager.updatePlayerEntities();
+        }
+      }, 500);
+
       uiManager.showWaitingRoom(gameState.room);
       uiManager.updatePlayerList();
     });
 
     this.on("room_joined", (data) => {
-      Utils.logInfo("🚪 Room joined:", data);
-      gameState.setRoom(data.roomCode || data.code);
-      gameState.setPlayerId(data.playerId);
-      gameState.updatePlayers(data.players);
-      if (data.maze) gameState.setMaze(data.maze);
-      if (data.treasures) gameState.setTreasures(data.treasures);
+      Utils.logInfo("🚪 Room joined");
+
+      const payload = data.payload || data;
+
+      gameState.setRoom(payload.roomCode || payload.code);
+      gameState.setPlayerId(payload.playerId);
+
+      if (payload.players) {
+        gameState.updatePlayers(payload.players);
+      }
+
+      if (payload.maze) {
+        Utils.logInfo("🗺️ Setting maze from room_joined");
+        gameState.setMaze(payload.maze);
+      }
+
+      if (payload.treasures) {
+        Utils.logInfo("💎 Setting treasures from room_joined");
+        gameState.setTreasures(payload.treasures);
+      }
+
+      // Try to render after a short delay to ensure A-Frame scene is ready
+      setTimeout(() => {
+        if (gameState.maze && gameState.maze.length > 0) {
+          Utils.logInfo("🎨 Rendering maze...");
+          mazeRenderer.renderMaze();
+        }
+
+        if (gameState.treasures && gameState.treasures.length > 0) {
+          Utils.logInfo("💎 Rendering treasures...");
+          mazeRenderer.renderTreasures();
+        }
+
+        if (Object.keys(gameState.players).length > 0) {
+          Utils.logInfo("🎮 Rendering player entities...");
+          playerManager.updatePlayerEntities();
+        }
+      }, 500);
+
       uiManager.showWaitingRoom(gameState.room);
       uiManager.updatePlayerList();
     });
@@ -221,12 +298,22 @@ class WSClient {
 
     // Player events
     this.on("player_joined", (data) => {
-      Utils.logInfo("👤 Player joined:", data);
-      if (data.players) {
-        gameState.updatePlayers(data.players);
-      } else if (data.player) {
-        gameState.addPlayer(data.player);
+      Utils.logInfo("👤 Player joined");
+
+      const payload = data.payload || data;
+
+      if (payload.players) {
+        gameState.updatePlayers(payload.players);
+      } else if (payload.player) {
+        gameState.addPlayer(payload.player);
       }
+
+      // Render player entities if maze is loaded
+      if (gameState.maze && gameState.maze.length > 0) {
+        Utils.logInfo("🎮 Updating player entities after join...");
+        playerManager.updatePlayerEntities();
+      }
+
       uiManager.updatePlayerList();
     });
 
@@ -260,6 +347,49 @@ class WSClient {
       gameState.startGame(data);
       uiManager.hideLobby();
       gameController.initGame();
+    });
+
+    this.on("game_update", (data) => {
+      Utils.logInfo("🔄 Game update received");
+
+      // Update from payload
+      const payload = data.payload || data;
+
+      if (payload.maze) {
+        Utils.logInfo("🗺️ Updating maze...");
+        gameState.setMaze(payload.maze);
+
+        // Render maze if not already rendered
+        if (!mazeRenderer.rendered) {
+          mazeRenderer.renderMaze();
+        }
+      }
+
+      if (payload.treasures) {
+        Utils.logInfo("💎 Updating treasures...");
+        gameState.setTreasures(payload.treasures);
+
+        // Render treasures if not already rendered
+        if (!mazeRenderer.rendered) {
+          mazeRenderer.renderTreasures();
+        }
+      }
+
+      if (payload.players) {
+        Utils.logInfo("👥 Updating players...");
+        gameState.updatePlayers(payload.players);
+        uiManager.updatePlayerList();
+
+        // Update player entities if game started
+        if (gameState.gameStarted) {
+          Object.keys(payload.players).forEach((playerId) => {
+            if (playerId !== gameState.myPlayerId) {
+              playerManager.updatePlayerEntity(playerId);
+            }
+          });
+          uiManager.updateLeaderboard();
+        }
+      }
     });
 
     this.on("player_moved", (data) => {
