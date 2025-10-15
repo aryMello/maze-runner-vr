@@ -1,145 +1,216 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Maze Runner VR</title>
-  <meta name="description" content="Multiplayer VR Maze Runner Game">
-  
-  <!-- A-Frame library -->
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
-  <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
-  
-  <!-- Socket.io for multiplayer -->
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-  
-  <!-- Custom styles and scripts -->
-  <link rel="stylesheet" href="/frontend/public/css/style.css">
-  <script src="/frontend/public/js/game.js" defer></script>
-</head>
-<body>
+  <head>
+    <meta charset="utf-8" />
+    <title>Maze Runner VR</title>
+    <meta name="description" content="Multiplayer VR Maze Runner Game" />
 
-  <!-- Connection Status -->
-  <div id="connectionStatus" class="status-connecting">Conectando...</div>
+    <!-- A-Frame library -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
+    <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
 
-  <!-- Lobby UI -->
-  <div id="lobby">
-    <div class="lobby-content">
-      <h1>Maze Runner VR</h1>
-      
-      <!-- Name Entry Screen -->
-      <div id="nameScreen">
-        <p class="subtitle">Insira seu nome para comecar</p>
-        <input type="text" id="playerNameInput" placeholder="Seu nome" maxlength="20" />
-        <button id="continueBtn">Continuar</button>
-      </div>
-      
-      <!-- Room Selection Screen -->
-      <div id="lobbyScreen" style="display: none;">
-        <p class="subtitle">Insira o codigo da sala ou crie uma sala para comecar</p>
-        <input type="text" id="roomCode" placeholder="Insira o codigo da sala (ex: ROOM123)" />
-        <button id="joinBtn">Entrar em Sala</button>
-        <button id="createBtn">Criar nova Sala</button>
-      </div>
-      
-      <!-- Waiting Room Screen -->
-      <div id="waitingScreen" style="display: none;">
-        <h2 class="waiting-title">Esperando jogadores...</h2>
-        <p id="currentRoom" class="room-code"></p>
-        <div id="playerList"></div>
-        <p class="player-info">Min 2 jogadores • Max 4 jogadores</p>
-        <button id="readyBtn">Comecar</button>
-        <button id="leaveBtn" class="leave-btn">Sair da sala</button>
+    <!-- Socket.io for multiplayer -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- Custom styles and scripts - Order matters! -->
+    <link rel="stylesheet" href="/css/style.css" />
+    <!-- 1. Configuration -->
+    <script src="/js/config.js"></script>
+    <!-- 2. Utilities -->
+    <script src="/js/utils.js"></script>
+    <!-- 3. State Management -->
+    <script src="/js/game-state.js"></script>
+    <!-- 4. UI Manager -->
+    <script src="/js/ui-manager.js"></script>
+    <!-- 5. Renderers -->
+    <script src="/js/maze-renderer.js"></script>
+    <script src="/js/player-manager.js"></script>
+    <!-- 6. Game Controller -->
+    <script src="/js/game-controller.js"></script>
+    <!-- 7. WebSocket Client -->
+    <script src="/js/ws-client.js"></script>
+    <!-- 8. Main Application -->
+    <script src="/js/main.js" defer></script>
+  </head>
+  <body>
+    <!-- Connection Status -->
+    <div id="connectionStatus" class="status-connecting">Conectando...</div>
+
+    <!-- Lobby UI -->
+    <div id="lobby">
+      <div class="lobby-content">
+        <h1>Maze Runner VR</h1>
+
+        <!-- Name Entry Screen -->
+        <div id="nameScreen">
+          <p class="subtitle">Insira seu nome para comecar</p>
+          <input
+            type="text"
+            id="playerNameInput"
+            placeholder="Seu nome"
+            maxlength="20"
+          />
+          <button id="continueBtn">Continuar</button>
+        </div>
+
+        <!-- Room Selection Screen -->
+        <div id="lobbyScreen" style="display: none">
+          <p class="subtitle">
+            Insira o codigo da sala ou crie uma sala para comecar
+          </p>
+          <input
+            type="text"
+            id="roomCode"
+            placeholder="Insira o codigo da sala (ex: ROOM123)"
+          />
+          <button id="joinBtn">Entrar em Sala</button>
+          <button id="createBtn">Criar nova Sala</button>
+        </div>
+
+        <!-- Waiting Room Screen -->
+        <div id="waitingScreen" style="display: none">
+          <h2 class="waiting-title">Esperando jogadores...</h2>
+          <p id="currentRoom" class="room-code"></p>
+          <div id="playerList"></div>
+          <p class="player-info">Min 2 jogadores • Max 4 jogadores</p>
+          <button id="readyBtn">Comecar</button>
+          <button id="leaveBtn" class="leave-btn">Sair da sala</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Countdown -->
-  <div id="countdown"></div>
+    <!-- Countdown -->
+    <div id="countdown"></div>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div>Jogador: <span id="playerName"></span></div>
-    <div>Tessouros: <span id="treasureCount">0</span>/5</div>
-    <div>Tempo: <span id="timer">0:00</span></div>
-  </div>
+    <!-- HUD -->
+    <div id="hud">
+      <div>Jogador: <span id="playerName"></span></div>
+      <div>Tessouros: <span id="treasureCount">0</span>/5</div>
+      <div>Tempo: <span id="timer">0:00</span></div>
+    </div>
 
-  <!-- Leaderboard -->
-  <div id="leaderboard">
-    <h3>Ranking</h3>
-    <div id="leaderboardList"></div>
-  </div>
+    <!-- Leaderboard -->
+    <div id="leaderboard">
+      <h3>Ranking</h3>
+      <div id="leaderboardList"></div>
+    </div>
 
-  <!-- Controls Info -->
-  <div id="controls-info">
-    <strong>Controles:</strong> W/↑ = Norte | S/↓ = Sul | A/← = Oeste | D/→ = Leste
-  </div>
+    <!-- Controls Info -->
+    <div id="controls-info">
+      <strong>Controles:</strong> W/↑ = Norte | S/↓ = Sul | A/← = Oeste | D/→ =
+      Leste
+    </div>
 
-  <!-- A-Frame Scene -->
-  <a-scene id="scene" background="color: #87CEEB">
-    
-    <!-- Assets -->
-    <a-assets>
-      <!-- Textures -->
-      <img id="grass-texture" src="/frontend/public/assets/img/floor.png" crossorigin="anonymous">
-      <img id="wall-texture" src="/frontend/public/assets/img/brick.png" crossorigin="anonymous">
-      <img id="sky-texture" src="/frontend/public/assets/img/sky.png" crossorigin="anonymous">
-      
-      <!-- Audio -->
-      <audio id="footstep-sound" src="/frontend/public/assets/sounds/footstep.mp3" preload="auto"></audio>
-      <audio id="collect-sound" src="/frontend/public/assets/sounds/collect.mp3" preload="auto"></audio>
-      <audio id="ambient-sound" src="/frontend/public/assets/sounds/ambient.mp3" preload="auto"></audio>
-      <audio id="win-sound" src="/frontend/public/assets/sounds/victory.mp3" preload="auto"></audio>
-    </a-assets>
+    <!-- A-Frame Scene -->
+    <a-scene id="scene" background="color: #87CEEB">
+      <!-- Assets -->
+      <a-assets>
+        <!-- Textures -->
+        <img
+          id="grass-texture"
+          src="/assets/img/floor.png"
+          crossorigin="anonymous"
+        />
+        <img
+          id="wall-texture"
+          src="/assets/img/brick.png"
+          crossorigin="anonymous"
+        />
+        <img
+          id="sky-texture"
+          src="/assets/img/sky.png"
+          crossorigin="anonymous"
+        />
 
-    <!-- Camera and controls -->
-    <a-entity id="rig" position="0 3 0">
-      <a-camera id="player-camera" look-controls wasd-controls="acceleration: 30">
-        <!-- Cursor for VR interaction -->
-        <a-entity cursor="fuse: true; fuseTimeout: 750"
-                  position="0 0 -1"
-                  geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
-                  material="color: #40E0D0; shader: flat; transparent: true; opacity: 0.9"
-                  raycaster="objects: .clickable; far: 25; interval: 100">
-        </a-entity>
-      </a-camera>
-    </a-entity>
+        <!-- Audio -->
+        <audio
+          id="footstep-sound"
+          src="/assets/sounds/footstep.mp3"
+          preload="auto"
+        ></audio>
+        <audio
+          id="collect-sound"
+          src="/assets/sounds/collect.mp3"
+          preload="auto"
+        ></audio>
+        <audio
+          id="ambient-sound"
+          src="/assets/sounds/ambient.mp3"
+          preload="auto"
+        ></audio>
+        <audio
+          id="win-sound"
+          src="/assets/sounds/victory.mp3"
+          preload="auto"
+        ></audio>
+      </a-assets>
 
-    <!-- Ambient sound -->
-    <a-sound
-      src="#ambient-sound"
-      autoplay="true"
-      loop="true"
-      volume="0.3"
-      position="0 1.6 0">
-    </a-sound>
+      <!-- Camera and controls -->
+      <a-entity id="rig" position="0 3 0">
+        <a-camera
+          id="player-camera"
+          look-controls
+          wasd-controls="acceleration: 30"
+        >
+          <!-- Cursor for VR interaction -->
+          <a-entity
+            cursor="fuse: true; fuseTimeout: 750"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
+            material="color: #40E0D0; shader: flat; transparent: true; opacity: 0.9"
+            raycaster="objects: .clickable; far: 25; interval: 100"
+          >
+          </a-entity>
+        </a-camera>
+      </a-entity>
 
-    <!-- Sky with texture -->
-    <a-sky src="#sky-texture" rotation="0 90 0"></a-sky>
+      <!-- Ambient sound -->
+      <a-sound
+        src="#ambient-sound"
+        autoplay="true"
+        loop="true"
+        volume="0.3"
+        position="0 1.6 0"
+      >
+      </a-sound>
 
-    <!-- Ground with texture -->
-    <a-plane id="ground" 
-             position="0 0 0" 
-             rotation="-90 0 0" 
-             width="50" 
-             height="50" 
-             src="#grass-texture"
-             repeat="10 10"
-             shadow="receive: true">
-    </a-plane>
+      <!-- Sky with texture -->
+      <a-sky src="#sky-texture" rotation="0 90 0"></a-sky>
 
-    <!-- Lighting -->
-    <a-light type="ambient" color="#BBB" intensity="0.6"></a-light>
-    <a-light type="directional" color="#FFF" intensity="0.8" position="5 10 7" 
-             castShadow="true"></a-light>
-    <a-light type="point" position="0 5 0" color="#FFF" intensity="0.4"></a-light>
+      <!-- Ground with texture -->
+      <a-plane
+        id="ground"
+        position="0 0 0"
+        rotation="-90 0 0"
+        width="50"
+        height="50"
+        src="#grass-texture"
+        repeat="10 10"
+        shadow="receive: true"
+      >
+      </a-plane>
 
-    <!-- Game containers -->
-    <a-entity id="maze"></a-entity>
-    <a-entity id="players"></a-entity>
-    <a-entity id="treasures"></a-entity>
+      <!-- Lighting -->
+      <a-light type="ambient" color="#BBB" intensity="0.6"></a-light>
+      <a-light
+        type="directional"
+        color="#FFF"
+        intensity="0.8"
+        position="5 10 7"
+        castShadow="true"
+      ></a-light>
+      <a-light
+        type="point"
+        position="0 5 0"
+        color="#FFF"
+        intensity="0.4"
+      ></a-light>
 
-  </a-scene>
-
-</body>
+      <!-- Game containers -->
+      <a-entity id="maze"></a-entity>
+      <a-entity id="players"></a-entity>
+      <a-entity id="treasures"></a-entity>
+    </a-scene>
+  </body>
 </html>

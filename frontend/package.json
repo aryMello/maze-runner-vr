@@ -5,12 +5,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "cross-env NODE_ENV=development nodemon server.js",
+    "dev": "nodemon server.js",
     "dev:local": "concurrently \"npm run backend\" \"npm run frontend\" --names \"BACKEND,FRONTEND\" --prefix-colors \"cyan,green\" --kill-others-on-fail",
     "backend": "cd ../backend && npm run dev",
-    "frontend": "cross-env NODE_ENV=development BACKEND_URL=http://localhost:3001 PORT=3000 nodemon server.js",
-    "frontend-only": "cross-env NODE_ENV=development BACKEND_URL=http://localhost:3001 PORT=3000 nodemon server.js",
-    "dev:remote": "cross-env NODE_ENV=development BACKEND_URL=https://jogo-s89j.onrender.com nodemon server.js",
+    "frontend": "BACKEND_URL=http://localhost:3001 PORT=3000 nodemon server.js",
+    "frontend-only": "BACKEND_URL=http://localhost:3001 PORT=3000 nodemon server.js",
+    "dev:remote": "BACKEND_URL=https://jogo-s89j.onrender.com nodemon server.js",
     "prod": "cross-env NODE_ENV=production node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

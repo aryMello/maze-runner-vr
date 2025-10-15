@@ -7,8 +7,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Detectar ambiente
-const isProduction = process.env.NODE_ENV === 'production';
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+const isProduction = true;
+const BACKEND_URL = process.env.BACKEND_URL || 'https://jogo-s89j.onrender.com';
 
 console.log('\n' + '='.repeat(60));
 console.log('  MAZE RUNNER VR - Frontend Server');
