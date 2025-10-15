@@ -30,4 +30,4 @@ The game works on:
 
 ## License
 
-MIT License - feel free to use for personal or commercial projects. 
+MIT License - feel free to use for personal or commercial projects.
