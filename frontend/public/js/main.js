@@ -73,7 +73,16 @@ function setupUI() {
         alert("Não conectado ao servidor. Aguarde...");
         return;
       }
-      socket.emit("create_room", { playerName: gameState.myPlayerName });
+
+      // Generate a unique player ID
+      const playerId = "player-" + Math.random().toString(36).substr(2, 9);
+      gameState.setPlayerId(playerId);
+
+      socket.emit("create_room", {
+        playerId: playerId,
+        name: gameState.myPlayerName,
+        maxPlayers: 4,
+      });
     });
   }
 
@@ -99,9 +108,17 @@ function setupUI() {
         alert("Não conectado ao servidor. Aguarde...");
         return;
       }
+
+      // Generate a unique player ID if not already set
+      if (!gameState.myPlayerId) {
+        const playerId = "player-" + Math.random().toString(36).substr(2, 9);
+        gameState.setPlayerId(playerId);
+      }
+
       socket.emit("join_room", {
         roomCode: roomCode,
-        playerName: gameState.myPlayerName,
+        playerId: gameState.myPlayerId,
+        name: gameState.myPlayerName,
       });
     });
   }
@@ -116,6 +133,7 @@ function setupUI() {
       const isReady = gameState.toggleReady();
       Utils.logInfo("✅ Mudando status pronto:", isReady);
       socket.emit("player_ready", {
+        playerId: gameState.myPlayerId,
         roomCode: gameState.room,
         ready: isReady,
       });
@@ -130,7 +148,10 @@ function setupUI() {
   if (leaveBtn) {
     leaveBtn.addEventListener("click", () => {
       Utils.logInfo("👋 Leave button clicked");
-      socket.emit("leave_room", { roomCode: gameState.room });
+      socket.emit("leave_room", {
+        playerId: gameState.myPlayerId,
+        roomCode: gameState.room,
+      });
       location.reload();
     });
   }

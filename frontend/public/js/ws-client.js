@@ -163,10 +163,10 @@ class WSClient {
       return;
     }
 
+    // Format message according to server expectations: {type, payload}
     const message = JSON.stringify({
-      event: event,
-      data: data,
-      timestamp: new Date().toISOString(),
+      type: event,
+      payload: data,
     });
 
     try {

@@ -38,6 +38,7 @@ class GameController {
         if (distance < CONFIG.COLLECT_RADIUS) {
           Utils.logInfo(`Coletando tesouro ${treasure.id}`);
           this.socket.emit("collect_treasure", {
+            playerId: gameState.myPlayerId,
             roomCode: gameState.room,
             treasureId: treasure.id,
           });
@@ -78,6 +79,7 @@ class GameController {
 
     if (!this.checkWallCollision(newX, newZ)) {
       this.socket.emit("move_player", {
+        playerId: gameState.myPlayerId,
         roomCode: gameState.room,
         x: newX,
         z: newZ,
