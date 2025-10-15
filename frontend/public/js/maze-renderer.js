@@ -36,6 +36,7 @@ class MazeRenderer {
       }
     }
 
+    Utils.logInfo("🎨 Starting maze rendering...");
     this.mazeContainer.innerHTML = "";
 
     if (!gameState.maze || gameState.maze.length === 0) {
@@ -44,6 +45,18 @@ class MazeRenderer {
     }
 
     const walls = this.convertMazeToWalls(gameState.maze);
+
+    // Log example of wall calculation for debugging
+    if (walls.length > 0) {
+      const cellSize = gameState.cellSize;
+      const mazeSize = gameState.maze.length;
+      const offsetX = (mazeSize * cellSize) / 2;
+      const offsetZ = (mazeSize * cellSize) / 2;
+      Utils.logDebug(
+        `📐 Wall calculation example: cellSize=${cellSize}, mazeSize=${mazeSize}, offsetX=${offsetX}, offsetZ=${offsetZ}`
+      );
+      Utils.logDebug(`📐 First wall position: (${walls[0].x}, ${walls[0].z})`);
+    }
 
     walls.forEach((wall) => {
       const wallEl = document.createElement("a-box");
@@ -70,18 +83,44 @@ class MazeRenderer {
       }
     }
 
+    Utils.logInfo("🎨 Starting treasure rendering...");
     this.treasuresContainer.innerHTML = "";
 
     if (!gameState.treasures || gameState.treasures.length === 0) {
-      Utils.logWarn("Tesouros não carregados ainda");
+      Utils.logWarn("⚠️ Tesouros não carregados ainda");
       return;
     }
 
+    Utils.logInfo(
+      `📊 Total treasures to render: ${gameState.treasures.length}`
+    );
+
+    // Use EXACT SAME calculation as walls
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+
+    let renderedCount = 0;
     gameState.treasures.forEach((treasure) => {
+      Utils.logDebug(
+        `Processing treasure ${treasure.id} at server coords (${treasure.x}, ${treasure.z}) - collected: ${treasure.collected}`
+      );
+
       if (!treasure.collected) {
+        // Treasures come as grid coordinates (e.g., 7.5 means between cells 7 and 8)
+        // Apply EXACT SAME formula as walls: position = coord * cellSize - offset + cellSize/2
+        // But treasures already have the .5, so we treat them as col/row directly
+        const worldX = treasure.x * cellSize - offsetX;
+        const worldZ = treasure.z * cellSize - offsetZ;
+
+        Utils.logDebug(
+          `World position after centering: (${worldX}, ${worldZ})`
+        );
+
         const treasureEl = document.createElement("a-octahedron");
         treasureEl.setAttribute("id", `treasure-${treasure.id}`);
-        treasureEl.setAttribute("position", `${treasure.x} 1 ${treasure.z}`);
+        treasureEl.setAttribute("position", `${worldX} 1 ${worldZ}`);
         treasureEl.setAttribute("radius", "0.5");
         treasureEl.setAttribute("color", "#FFD700");
         treasureEl.setAttribute("metalness", "0.8");
@@ -92,18 +131,20 @@ class MazeRenderer {
         );
         treasureEl.setAttribute(
           "animation__hover",
-          `property: position; to: ${treasure.x} 1.5 ${treasure.z}; dir: alternate; loop: true; dur: 1000; easing: easeInOutSine`
+          `property: position; to: ${worldX} 1.5 ${worldZ}; dir: alternate; loop: true; dur: 1000; easing: easeInOutSine`
         );
         treasureEl.setAttribute("class", "treasure");
         treasureEl.setAttribute("shadow", "cast: true");
         this.treasuresContainer.appendChild(treasureEl);
+        renderedCount++;
+        Utils.logDebug(
+          `✅ Treasure ${treasure.id} added to scene at world (${worldX}, ${worldZ})`
+        );
       }
     });
 
     Utils.logInfo(
-      `Renderizados ${
-        gameState.treasures.filter((t) => !t.collected).length
-      } tesouros`
+      `✅ Renderizados ${renderedCount} tesouros de ${gameState.treasures.length} total`
     );
   }
 

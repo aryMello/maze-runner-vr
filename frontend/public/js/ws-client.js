@@ -94,9 +94,31 @@ class WSClient {
       const data = JSON.parse(event.data);
       const eventType = data.event || data.type;
 
-      // Log with formatted JSON
+      // Log with formatted JSON (compact maze as matrix)
       Utils.logDebug("📨 Received:", eventType);
-      console.log(JSON.stringify(data, null, 2));
+
+      // Create a copy for logging with compact maze
+      const logData = JSON.parse(JSON.stringify(data));
+
+      // Convert maze to compact matrix representation
+      if (logData.payload?.room?.maze) {
+        const maze = logData.payload.room.maze;
+        const mazeString = maze.map((row) => row.join("")).join("\n");
+        console.log(
+          `🗺️ Maze (${maze.length}x${maze[0].length}):\n${mazeString}`
+        );
+        logData.payload.room.maze = `[${maze.length}x${maze[0].length} matrix - see above]`;
+      }
+      if (logData.payload?.maze) {
+        const maze = logData.payload.maze;
+        const mazeString = maze.map((row) => row.join("")).join("\n");
+        console.log(
+          `🗺️ Maze (${maze.length}x${maze[0].length}):\n${mazeString}`
+        );
+        logData.payload.maze = `[${maze.length}x${maze[0].length} matrix - see above]`;
+      }
+
+      console.log(JSON.stringify(logData, null, 2));
 
       // Trigger event based on message structure
       if (data.event) {
@@ -227,19 +249,29 @@ class WSClient {
 
       // Try to render after a short delay to ensure A-Frame scene is ready
       setTimeout(() => {
+        Utils.logInfo(
+          "⏰ Timeout completed (room_created), attempting to render..."
+        );
+
         if (gameState.maze && gameState.maze.length > 0) {
-          Utils.logInfo("🎨 Rendering maze...");
+          Utils.logInfo("🎨 Rendering maze from room_created...");
           mazeRenderer.renderMaze();
+        } else {
+          Utils.logWarn("⚠️ Maze data not available for rendering");
         }
 
         if (gameState.treasures && gameState.treasures.length > 0) {
-          Utils.logInfo("💎 Rendering treasures...");
+          Utils.logInfo("💎 Rendering treasures from room_created...");
           mazeRenderer.renderTreasures();
+        } else {
+          Utils.logWarn("⚠️ Treasures data not available for rendering");
         }
 
         if (Object.keys(gameState.players).length > 0) {
-          Utils.logInfo("🎮 Rendering player entities...");
+          Utils.logInfo("🎮 Rendering player entities from room_created...");
           playerManager.updatePlayerEntities();
+        } else {
+          Utils.logWarn("⚠️ Players data not available for rendering");
         }
       }, 500);
 
@@ -367,18 +399,37 @@ class WSClient {
 
       if (payload.treasures) {
         Utils.logInfo("💎 Updating treasures...");
+        Utils.logInfo(`📊 Treasures count: ${payload.treasures.length}`);
         gameState.setTreasures(payload.treasures);
 
-        // Render treasures if not already rendered
-        if (!mazeRenderer.rendered) {
+        // Always try to render treasures
+        setTimeout(() => {
+          Utils.logInfo("🎨 Rendering treasures from game_update...");
+          Utils.logInfo(
+            `📊 GameState treasures: ${
+              gameState.treasures ? gameState.treasures.length : 0
+            }`
+          );
           mazeRenderer.renderTreasures();
-        }
+        }, 100);
       }
 
       if (payload.players) {
         Utils.logInfo("👥 Updating players...");
+        Utils.logInfo(
+          `📊 Players count: ${Object.keys(payload.players).length}`
+        );
         gameState.updatePlayers(payload.players);
         uiManager.updatePlayerList();
+
+        // Always try to render player entities
+        setTimeout(() => {
+          Utils.logInfo("🎨 Rendering players from game_update...");
+          Utils.logInfo(
+            `📊 GameState players: ${Object.keys(gameState.players).length}`
+          );
+          playerManager.updatePlayerEntities();
+        }, 100);
 
         // Update player entities if game started
         if (gameState.gameStarted) {

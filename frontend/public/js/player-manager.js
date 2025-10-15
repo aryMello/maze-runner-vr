@@ -24,24 +24,53 @@ class PlayerManager {
       }
     }
 
+    Utils.logInfo("🎨 Starting player entities rendering...");
     const playerArray = Object.values(gameState.players);
+    Utils.logInfo(`📊 Total players to render: ${playerArray.length}`);
+
     playerArray.forEach((player, idx) => {
+      Utils.logDebug(
+        `Processing player ${player.id} (${player.name}) at (${player.x}, ${player.z})`
+      );
       this.updatePlayerEntity(player.id, idx);
     });
+
+    Utils.logInfo(`✅ Finished rendering ${playerArray.length} players`);
   }
 
   updatePlayerEntity(playerId, colorIdx) {
     const player = gameState.players[playerId];
-    if (!player) return;
+    if (!player) {
+      Utils.logWarn(`⚠️ Player ${playerId} not found in gameState`);
+      return;
+    }
 
     let playerEl = document.getElementById(`player-${playerId}`);
 
     if (!playerEl) {
+      Utils.logDebug(`Creating new entity for player ${playerId}`);
       playerEl = this.createPlayerEntity(playerId, player, colorIdx);
+      Utils.logDebug(`✅ Player entity created: player-${playerId}`);
+    } else {
+      Utils.logDebug(`Updating existing entity for player ${playerId}`);
     }
 
+    // Calculate offset for centering (EXACT SAME as maze)
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+
+    // Apply EXACT SAME formula as walls: position = coord * cellSize - offset
+    // Players come as grid coordinates (e.g., 1.5 means between cells 1 and 2)
+    const worldX = player.x * cellSize - offsetX;
+    const worldZ = player.z * cellSize - offsetZ;
+
     // Update position
-    playerEl.setAttribute("position", `${player.x} 0.8 ${player.z}`);
+    playerEl.setAttribute("position", `${worldX} 0.8 ${worldZ}`);
+    Utils.logDebug(
+      `Position set: grid (${player.x}, ${player.z}) -> world (${worldX}, 0.8, ${worldZ})`
+    );
 
     // Update rotation
     if (player.direction !== undefined) {
