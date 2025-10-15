@@ -1,202 +1,210 @@
-// WebSocket Client
-// Manages connection strategies and socket.io client lifecycle
+// WebSocket Client - Native WebSocket Implementation
+// Manages WebSocket connection with event handling
 
 class WSClient {
   constructor(server, path, isLocal) {
     this.server = server;
     this.path = path;
     this.isLocal = !!isLocal;
-    this.socket = null;
-    this.strategies = [
-      {
-        name: "ws-path",
-        path: this.path,
-        transports: ["websocket", "polling"],
-      },
-      {
-        name: "socket.io-default",
-        path: "/socket.io",
-        transports: ["websocket", "polling"],
-      },
-      { name: "polling-only", path: "/socket.io", transports: ["polling"] },
-    ];
+    this.ws = null;
+    this.connected = false;
+    this.listeners = {};
+    this.id = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 2000;
   }
 
-  async rawWsDiagnostic() {
-    try {
-      const norm = Utils.normalizeServer(this.server);
-      const wsProto = norm.wsProto || "wss";
-      const host = norm.host;
-      const path = this.path.startsWith("/") ? this.path : "/" + this.path;
-      const wsUrl = `${wsProto}://${host}${path}`;
-      Utils.logDebug("Raw WS diagnostic to", wsUrl, "normalized:", norm);
-      return await new Promise((resolve) => {
-        let dbg;
-        try {
-          dbg = new WebSocket(wsUrl);
-        } catch (e) {
-          Utils.logError("Raw WebSocket constructor failed", e && e.message);
-          return resolve({ ok: false, error: e });
-        }
-        const t = setTimeout(() => {
-          try {
-            dbg.close();
-          } catch (e) {}
-          resolve({ ok: false, error: new Error("raw ws timeout") });
-        }, 8000);
-        dbg.onopen = () => {
-          clearTimeout(t);
-          dbg.close();
-          resolve({ ok: true });
-        };
-        dbg.onerror = (ev) => {
-          clearTimeout(t);
-          resolve({ ok: false, error: ev });
-        };
-      });
-    } catch (e) {
-      Utils.logError("Raw WS diagnostic failed", e && e.message);
-      return { ok: false, error: e };
-    }
+  // Build WebSocket URL
+  getWebSocketURL() {
+    const norm = Utils.normalizeServer(this.server);
+    const wsProto = norm.wsProto || "wss";
+    const host = norm.host;
+    const path = this.path.startsWith("/") ? this.path : "/" + this.path;
+    return `${wsProto}://${host}${path}`;
   }
 
-  tryStrategy(strategy) {
+  // Connect to WebSocket server
+  connect() {
     return new Promise((resolve, reject) => {
-      const opts = {
-        path: strategy.path,
-        transports: strategy.transports,
-        secure: !this.isLocal,
-        rejectUnauthorized: false,
-        reconnection: false,
-        timeout: 5000,
-      };
-      Utils.logInfo("Attempting strategy", strategy.name, opts);
-      const s = io(this.server, opts);
+      try {
+        const wsUrl = this.getWebSocketURL();
+        Utils.logInfo("Connecting to WebSocket:", wsUrl);
 
-      const onConnect = () => {
-        cleanup();
-        Utils.logInfo("Strategy succeeded", strategy.name);
-        resolve(s);
-      };
-      const onError = (err) => {
-        cleanup();
-        Utils.logWarn(
-          "Strategy failed",
-          strategy.name,
-          err && err.message ? err.message : err
-        );
-        try {
-          s.close();
-        } catch (e) {}
-        reject(err);
-      };
+        this.ws = new WebSocket(wsUrl);
 
-      const timeout = setTimeout(() => {
-        onError(new Error("strategy timeout"));
-      }, 6000);
-      function cleanup() {
-        clearTimeout(timeout);
-        s.off && s.off("connect", onConnect);
-        s.off && s.off("connect_error", onError);
-        s.off && s.off("error", onError);
+        const timeout = setTimeout(() => {
+          Utils.logError("WebSocket connection timeout");
+          this.ws.close();
+          reject(new Error("Connection timeout"));
+        }, 10000);
+
+        this.ws.onopen = () => {
+          clearTimeout(timeout);
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          this.id = "ws-" + Math.random().toString(36).substr(2, 9);
+          Utils.logInfo("✅ WebSocket connected successfully!", this.id);
+
+          uiManager.updateConnectionStatus("connected");
+          this.trigger("connect");
+
+          // Setup handlers after connection
+          this.setupHandlers();
+
+          resolve(this);
+        };
+
+        this.ws.onclose = (event) => {
+          Utils.logInfo("WebSocket closed", event.code, event.reason);
+          this.connected = false;
+          uiManager.updateConnectionStatus("disconnected");
+          this.trigger("disconnect", event.reason);
+
+          // Attempt reconnection if not a clean close
+          if (
+            event.code !== 1000 &&
+            this.reconnectAttempts < this.maxReconnectAttempts
+          ) {
+            this.attemptReconnect();
+          }
+        };
+
+        this.ws.onerror = (error) => {
+          clearTimeout(timeout);
+          Utils.logError("WebSocket error:", error);
+          this.trigger("error", error);
+          this.trigger("connect_error", error);
+          reject(error);
+        };
+
+        this.ws.onmessage = (event) => {
+          this.handleMessage(event);
+        };
+      } catch (error) {
+        Utils.logError("Failed to create WebSocket:", error);
+        reject(error);
       }
-
-      s.on && s.on("connect", onConnect);
-      s.on && s.on("connect_error", onError);
-      s.on && s.on("error", onError);
     });
   }
 
-  async connect() {
-    for (const st of this.strategies) {
-      try {
-        const s = await this.tryStrategy(st);
-        this.socket = s;
-        this.socket.io && (this.socket.io.opts.reconnection = true);
-        this.setupHandlers(this.socket);
-        return this.socket;
-      } catch (e) {
-        Utils.logWarn("Strategy", st.name, "did not connect:", e && e.message);
-      }
-    }
-
-    Utils.logError("All connection strategies failed; running diagnostics");
-    const http = await Utils.checkBackendHttp("/api/rooms");
-    Utils.logDebug("HTTP diagnostic result", http);
-    const raw = await this.rawWsDiagnostic();
-    Utils.logDebug("Raw WS diagnostic", raw);
-    throw new Error("All strategies failed");
-  }
-
-  setupHandlers(s) {
-    if (!s) return;
-    Utils.logInfo(
-      "Configuring socket handlers for connected socket",
-      s && s.id
-    );
-
-    // Setup manager listeners
+  // Handle incoming messages
+  handleMessage(event) {
     try {
-      if (s.io) {
-        s.io.on &&
-          s.io.on("reconnect_attempt", (attempt) =>
-            Utils.logInfo("manager reconnect_attempt", attempt)
-          );
-        s.io.on &&
-          s.io.on("reconnect_error", (err) =>
-            Utils.logWarn("manager reconnect_error", err)
-          );
-        s.io.on &&
-          s.io.on("reconnect_failed", () =>
-            Utils.logWarn("manager reconnect_failed")
-          );
+      const data = JSON.parse(event.data);
+      Utils.logDebug("📨 Received:", data.event || data.type, data);
+
+      // Trigger event based on message structure
+      if (data.event) {
+        this.trigger(data.event, data.data || data);
+      } else if (data.type) {
+        this.trigger(data.type, data);
+      } else {
+        // Generic message
+        this.trigger("message", data);
       }
     } catch (e) {
-      Utils.logWarn("Could not attach manager listeners", e && e.message);
+      Utils.logWarn("Failed to parse message:", event.data);
+      this.trigger("message", event.data);
+    }
+  }
+
+  // Attempt to reconnect
+  attemptReconnect() {
+    this.reconnectAttempts++;
+    Utils.logInfo(
+      `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
+    );
+
+    setTimeout(() => {
+      this.connect().catch((err) => {
+        Utils.logError("Reconnection failed:", err);
+      });
+    }, this.reconnectDelay * this.reconnectAttempts);
+  }
+
+  // Register event listener
+  on(event, callback) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+  }
+
+  // Remove event listener
+  off(event, callback) {
+    if (!this.listeners[event]) return;
+    if (callback) {
+      this.listeners[event] = this.listeners[event].filter(
+        (cb) => cb !== callback
+      );
+    } else {
+      delete this.listeners[event];
+    }
+  }
+
+  // Trigger event listeners
+  trigger(event, data) {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach((callback) => {
+        try {
+          callback(data);
+        } catch (e) {
+          Utils.logError("Error in event listener:", event, e);
+        }
+      });
+    }
+  }
+
+  // Send message to server
+  emit(event, data) {
+    if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      Utils.logWarn("⚠️ Cannot send, WebSocket not connected:", event);
+      return;
     }
 
-    // Connection events
-    s.on("connect", () => {
-      Utils.logInfo("Connected to server (socket.io)");
-      uiManager.updateConnectionStatus("connected");
+    const message = JSON.stringify({
+      event: event,
+      data: data,
+      timestamp: new Date().toISOString(),
     });
-    s.on("disconnect", () => {
-      Utils.logInfo("Disconnected from server");
-      uiManager.updateConnectionStatus("disconnected");
-    });
-    s.on("connect_error", (error) => {
-      Utils.logError("Connection error (post-connect):", error);
-      uiManager.updateConnectionStatus("disconnected");
-    });
-    s.on("reconnect_attempt", (attempt) =>
-      Utils.logInfo("socket reconnect_attempt", attempt)
-    );
-    s.on("reconnect_error", (err) =>
-      Utils.logWarn("socket reconnect_error", err)
-    );
-    s.on("reconnect_failed", () => Utils.logWarn("socket reconnect_failed"));
-    s.on("error", (err) => Utils.logError("socket error", err));
-    s.on("ping", () => Utils.logDebug("socket ping"));
-    s.on("pong", (latency) =>
-      Utils.logDebug("socket pong latency(ms)=", latency)
-    );
+
+    try {
+      this.ws.send(message);
+      Utils.logDebug("📤 Sent:", event, data);
+    } catch (e) {
+      Utils.logError("Failed to send message:", e);
+    }
+  }
+
+  // Close connection
+  close() {
+    if (this.ws) {
+      this.ws.close(1000, "Client closing connection");
+      this.connected = false;
+    }
+  }
+
+  // Setup all game event handlers
+  setupHandlers() {
+    Utils.logInfo("Setting up game event handlers...");
 
     // Room events
-    s.on("room_created", (data) => {
-      Utils.logDebug("room_created", data);
-      gameState.setRoom(data.payload.code);
-      gameState.setPlayerId(data.payload.room.host);
-      if (data.payload.room) {
+    this.on("room_created", (data) => {
+      Utils.logInfo("🏠 Room created:", data);
+      gameState.setRoom(data.payload?.code || data.code);
+      gameState.setPlayerId(data.payload?.room?.host || data.playerId);
+      if (data.payload?.room) {
         gameState.setMaze(data.payload.room.maze);
         gameState.setTreasures(data.payload.room.treasures);
         gameState.updatePlayers(data.payload.room.players);
       }
-      uiManager.showWaitingRoom(data.payload.code);
+      uiManager.showWaitingRoom(gameState.room);
       uiManager.updatePlayerList();
     });
 
-    s.on("room_joined", (data) => {
-      Utils.logDebug("room_joined", data);
+    this.on("room_joined", (data) => {
+      Utils.logInfo("🚪 Room joined:", data);
       gameState.setRoom(data.roomCode || data.code);
       gameState.setPlayerId(data.playerId);
       gameState.updatePlayers(data.players);
@@ -206,13 +214,14 @@ class WSClient {
       uiManager.updatePlayerList();
     });
 
-    s.on("room_error", (data) => {
+    this.on("room_error", (data) => {
+      Utils.logError("❌ Room error:", data);
       alert(data.message || "Erro ao entrar na sala");
     });
 
     // Player events
-    s.on("player_joined", (data) => {
-      Utils.logDebug("player_joined", data);
+    this.on("player_joined", (data) => {
+      Utils.logInfo("👤 Player joined:", data);
       if (data.players) {
         gameState.updatePlayers(data.players);
       } else if (data.player) {
@@ -221,8 +230,8 @@ class WSClient {
       uiManager.updatePlayerList();
     });
 
-    s.on("player_left", (data) => {
-      Utils.logDebug("player_left", data);
+    this.on("player_left", (data) => {
+      Utils.logInfo("👋 Player left:", data);
       if (data.players) {
         gameState.updatePlayers(data.players);
       } else if (data.playerId) {
@@ -235,8 +244,8 @@ class WSClient {
       }
     });
 
-    s.on("player_ready", (data) => {
-      Utils.logDebug("player_ready", data);
+    this.on("player_ready", (data) => {
+      Utils.logInfo("✅ Player ready:", data);
       if (data.players) {
         gameState.updatePlayers(data.players);
       } else if (data.playerId) {
@@ -246,14 +255,14 @@ class WSClient {
     });
 
     // Game events
-    s.on("game_starting", (data) => {
-      Utils.logDebug("game_starting", data);
+    this.on("game_starting", (data) => {
+      Utils.logInfo("🎮 Game starting!", data);
       gameState.startGame(data);
       uiManager.hideLobby();
       gameController.initGame();
     });
 
-    s.on("player_moved", (data) => {
+    this.on("player_moved", (data) => {
       if (gameState.players[data.playerId]) {
         gameState.players[data.playerId].x = data.x;
         gameState.players[data.playerId].z = data.z;
@@ -262,19 +271,19 @@ class WSClient {
       }
     });
 
-    s.on("treasure_collected", (data) => {
-      Utils.logDebug("treasure_collected", data);
+    this.on("treasure_collected", (data) => {
+      Utils.logInfo("💎 Treasure collected:", data);
       gameController.handleTreasureCollection(data);
     });
 
-    s.on("game_won", (data) => {
-      Utils.logDebug("game_won", data);
+    this.on("game_won", (data) => {
+      Utils.logInfo("🏆 Game won!", data);
       gameController.handleGameWon(data);
     });
 
-    // Set socket globally and on controller
-    window.socket = s;
-    gameController.setSocket(s);
+    // Expose socket globally
+    window.socket = this;
+    gameController.setSocket(this);
   }
 }
 
