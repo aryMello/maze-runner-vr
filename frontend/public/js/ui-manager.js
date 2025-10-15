@@ -1,11 +1,22 @@
 // UI Management
 class UIManager {
   constructor() {
+    this.elements = null;
+    this.initialized = false;
+  }
+
+  // Initialize DOM elements - call this after DOM is ready
+  init() {
+    if (this.initialized) return;
+    Utils.logInfo("🎨 Initializing UIManager...");
     this.setupElements();
+    this.initialized = true;
+    Utils.logInfo("✅ UIManager initialized");
   }
 
   setupElements() {
     // Cache DOM elements
+    Utils.logDebug("🔍 Caching DOM elements...");
     this.elements = {
       nameScreen: document.getElementById("nameScreen"),
       lobbyScreen: document.getElementById("lobbyScreen"),
@@ -19,20 +30,55 @@ class UIManager {
       roomCode: document.getElementById("roomCode"),
       playerNameInput: document.getElementById("playerNameInput"),
     };
+
+    Utils.logDebug("DOM elements cached:", {
+      nameScreen: !!this.elements.nameScreen,
+      lobbyScreen: !!this.elements.lobbyScreen,
+      lobby: !!this.elements.lobby,
+    });
+  }
+
+  // Ensure elements are initialized before use
+  ensureInit() {
+    if (!this.initialized) {
+      this.init();
+    }
   }
 
   showNameScreen() {
-    this.elements.nameScreen.style.display = "block";
-    this.elements.lobbyScreen.style.display = "none";
+    Utils.logDebug("📺 Showing name screen");
+    if (this.elements.nameScreen) {
+      this.elements.nameScreen.style.display = "block";
+    }
+    if (this.elements.lobbyScreen) {
+      this.elements.lobbyScreen.style.display = "none";
+    }
   }
 
   showLobbyScreen() {
-    this.elements.nameScreen.style.display = "none";
-    this.elements.lobbyScreen.style.display = "block";
+    Utils.logInfo("📺 Showing lobby screen");
+    Utils.logDebug("Name screen element:", !!this.elements.nameScreen);
+    Utils.logDebug("Lobby screen element:", !!this.elements.lobbyScreen);
+
+    if (this.elements.nameScreen) {
+      this.elements.nameScreen.style.display = "none";
+      Utils.logDebug("✅ Name screen hidden");
+    } else {
+      Utils.logError("❌ Name screen element not found!");
+    }
+
+    if (this.elements.lobbyScreen) {
+      this.elements.lobbyScreen.style.display = "block";
+      Utils.logDebug("✅ Lobby screen shown");
+    } else {
+      Utils.logError("❌ Lobby screen element not found!");
+    }
   }
 
   hideLobby() {
-    this.elements.lobby.classList.add("hidden");
+    if (this.elements.lobby) {
+      this.elements.lobby.classList.add("hidden");
+    }
   }
 
   showWaitingRoom(roomCode) {

@@ -30,40 +30,72 @@ function initSocket() {
 
 // Setup UI event listeners
 function setupUI() {
-  document.addEventListener("DOMContentLoaded", () => {
-    // Continue button (name screen)
-    document.getElementById("continueBtn").addEventListener("click", () => {
-      const name = document.getElementById("playerNameInput").value.trim();
+  Utils.logInfo("🎮 Setting up UI event listeners...");
+
+  // Continue button (name screen)
+  const continueBtn = document.getElementById("continueBtn");
+  Utils.logDebug("Continue button found:", !!continueBtn);
+
+  if (continueBtn) {
+    continueBtn.addEventListener("click", () => {
+      Utils.logInfo("🔵 Continue button clicked!");
+      const nameInput = document.getElementById("playerNameInput");
+      const name = nameInput ? nameInput.value.trim() : "";
+      Utils.logDebug("Player name entered:", name);
+
       if (!name) {
+        Utils.logWarn("⚠️ No name entered");
         alert("Por favor, insira seu nome");
         return;
       }
-      gameState.setPlayerName(name);
-      uiManager.showLobbyScreen();
-    });
 
-    // Create room button
-    document.getElementById("createBtn").addEventListener("click", () => {
+      Utils.logInfo("✅ Setting player name:", name);
+      gameState.setPlayerName(name);
+
+      Utils.logInfo("🎬 Showing lobby screen...");
+      uiManager.showLobbyScreen();
+      Utils.logInfo("✅ Lobby screen should now be visible");
+    });
+  } else {
+    Utils.logError("❌ Continue button not found!");
+  }
+
+  // Create room button
+  const createBtn = document.getElementById("createBtn");
+  Utils.logDebug("Create button found:", !!createBtn);
+
+  if (createBtn) {
+    createBtn.addEventListener("click", () => {
+      Utils.logInfo("🏠 Create room button clicked");
       Utils.logInfo("Criando sala...", gameState.myPlayerName);
       if (!socket || !socket.connected) {
+        Utils.logWarn("⚠️ Socket not connected");
         alert("Não conectado ao servidor. Aguarde...");
         return;
       }
       socket.emit("create_room", { playerName: gameState.myPlayerName });
     });
+  }
 
-    // Join room button
-    document.getElementById("joinBtn").addEventListener("click", () => {
+  // Join room button
+  const joinBtn = document.getElementById("joinBtn");
+  Utils.logDebug("Join button found:", !!joinBtn);
+
+  if (joinBtn) {
+    joinBtn.addEventListener("click", () => {
+      Utils.logInfo("🚪 Join room button clicked");
       const roomCode = document
         .getElementById("roomCode")
         .value.trim()
         .toUpperCase();
       if (!roomCode) {
+        Utils.logWarn("⚠️ No room code entered");
         alert("Por favor, insira o código da sala");
         return;
       }
       Utils.logInfo("Entrando na sala:", roomCode);
       if (!socket || !socket.connected) {
+        Utils.logWarn("⚠️ Socket not connected");
         alert("Não conectado ao servidor. Aguarde...");
         return;
       }
@@ -72,9 +104,15 @@ function setupUI() {
         playerName: gameState.myPlayerName,
       });
     });
+  }
 
-    // Ready button
-    document.getElementById("readyBtn").addEventListener("click", () => {
+  // Ready button
+  const readyBtn = document.getElementById("readyBtn");
+  Utils.logDebug("Ready button found:", !!readyBtn);
+
+  if (readyBtn) {
+    readyBtn.addEventListener("click", () => {
+      Utils.logInfo("✅ Ready button clicked");
       const isReady = gameState.toggleReady();
       Utils.logInfo("✅ Mudando status pronto:", isReady);
       socket.emit("player_ready", {
@@ -83,18 +121,29 @@ function setupUI() {
       });
       uiManager.updateReadyButton(isReady);
     });
+  }
 
-    // Leave button
-    document.getElementById("leaveBtn").addEventListener("click", () => {
+  // Leave button
+  const leaveBtn = document.getElementById("leaveBtn");
+  Utils.logDebug("Leave button found:", !!leaveBtn);
+
+  if (leaveBtn) {
+    leaveBtn.addEventListener("click", () => {
+      Utils.logInfo("👋 Leave button clicked");
       socket.emit("leave_room", { roomCode: gameState.room });
       location.reload();
     });
-  });
+  }
+
+  Utils.logInfo("✅ All UI event listeners configured");
 }
 
 // Initialize on page load
 window.addEventListener("load", () => {
-  Utils.logInfo("Página carregada, inicializando aplicação...");
+  Utils.logInfo("🚀 Página carregada, inicializando aplicação...");
+
+  // Initialize UI Manager first (setup DOM element references)
+  uiManager.init();
 
   // Initialize socket
   initSocket();
@@ -116,6 +165,8 @@ window.addEventListener("load", () => {
       });
     }
   }
+
+  Utils.logInfo("✅ Application initialization complete");
 });
 
 // Add CSS animations
