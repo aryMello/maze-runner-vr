@@ -577,52 +577,53 @@ class WSClient {
 
     // ===== GAME EVENTS =====
     
-    // Event: game_start
-    // Quando o jogo começa (todos os jogadores estão prontos)
     this.on("game_start", (data) => {
-      Utils.logInfo("🎮 Game start! (from server) All players are ready!");
-      Utils.logInfo("📦 Game start data:", data);
+    Utils.logInfo("🎮 Game start! (from server) All players are ready!");
+
+    // Esconder status de conexão
+    const statusEl = document.getElementById("connectionStatus");
+    if (statusEl) {
+      statusEl.classList.add("hidden");
+    }
+    
+    gameState.gameStarted = true;
+    gameState.startGame(data);
+    
+    // 🔥 INICIAR SINCRONIZAÇÃO DE POSIÇÃO (com verificação)
+    if (window.positionSync) {
+      positionSync.start();
+      Utils.logInfo("✅ Position sync started!");
+    } else {
+      Utils.logWarn("⚠️ positionSync not loaded yet, will use keyboard events only");
+    }
+    
+    uiManager.hideLobby();
+    gameController.initGame();
+    
+    setTimeout(() => {
+      Utils.logInfo("🎨 NOW RENDERING: Game world...");
       
-      // Mark game as started FIRST
-      gameState.gameStarted = true;
-      gameState.startGame(data);
+      if (gameState.maze && gameState.maze.length > 0) {
+        mazeRenderer.renderMaze();
+      }
       
-      // Hide the lobby UI
-      Utils.logInfo("👋 Hiding lobby screen...");
-      uiManager.hideLobby();
-      
-      // Initialize the game controller
-      Utils.logInfo("🎬 Initializing game controller...");
-      gameController.initGame();
-      
-      // Render the maze, treasures, and players
-      setTimeout(() => {
-        Utils.logInfo("🎨 NOW RENDERING: Game world (game has started!)...");
-        
-        if (gameState.maze && gameState.maze.length > 0) {
-          Utils.logInfo("🗺️ Rendering maze...");
-          mazeRenderer.renderMaze();
+      if (gameState.treasures && gameState.treasures.length > 0) {
+        if (window.treasureManager) {
+          treasureManager.setTreasures(gameState.treasures);
+          treasureManager.renderTreasures();
+          treasureManager.startProximityCheck();
         } else {
-          Utils.logWarn("⚠️ No maze data to render!");
-        }
-        
-        if (gameState.treasures && gameState.treasures.length > 0) {
-          Utils.logInfo("💎 Rendering treasures...");
           mazeRenderer.renderTreasures();
-        } else {
-          Utils.logWarn("⚠️ No treasures data to render!");
         }
-        
-        if (Object.keys(gameState.players).length > 0) {
-          Utils.logInfo("👥 Rendering all players...");
-          playerManager.updatePlayerEntities();
-        } else {
-          Utils.logWarn("⚠️ No players data to render!");
-        }
-        
-        Utils.logInfo("✅ Game world rendered! Let's play! 🎮");
-      }, 200);
-    });
+      }
+      
+      if (Object.keys(gameState.players).length > 0) {
+        playerManager.updatePlayerEntities();
+      }
+      
+      Utils.logInfo("✅ Game world rendered! Let's play! 🎮");
+    }, 200);
+  });
 
     // Alias: game_starting (caso o servidor use este nome)
     this.on("game_starting", (data) => {
@@ -791,15 +792,52 @@ class WSClient {
     // Event: treasure_collected
     // Quando um tesouro é coletado
     this.on("treasure_collected", (data) => {
-      Utils.logInfo("💎 Treasure collected:", data);
+      Utils.logInfo("💎 Treasure collected event received:", data);
       
       const payload = data.payload || data;
-      const playerId = payload.playerId;
-      const treasureId = payload.treasureId;
       
-      Utils.logInfo(`🎯 Player ${playerId} collected treasure ${treasureId}`);
-      
-      gameController.handleTreasureCollection(data);
+      // Delegate to treasureManager
+      if (window.treasureManager) {
+        treasureManager.handleTreasureCollected(payload);
+      } else {
+        Utils.logError("❌ treasureManager not available!");
+        
+        // Fallback (old logic)
+        const treasureId = payload.treasureId;
+        const playerId = payload.playerId;
+        
+        const treasure = gameState.treasures.find(t => t.id === treasureId);
+        if (treasure) {
+          treasure.collected = true;
+          treasure.collectedBy = playerId;
+          
+          // Remove from scene
+          const treasureEl = document.getElementById(treasureId);
+          if (treasureEl && treasureEl.parentNode) {
+            treasureEl.parentNode.removeChild(treasureEl);
+          }
+          
+          // Update count
+          if (playerId === gameState.myPlayerId) {
+            gameState.myTreasureCount++;
+            const el = document.getElementById('treasureCount');
+            if (el) {
+              el.textContent = `${gameState.myTreasureCount}/${gameState.treasures.length}`;
+            }
+          }
+          
+          // Update player
+          if (gameState.players[playerId]) {
+            const newCount = payload.treasures !== undefined ? payload.treasures : (gameState.players[playerId].treasures || 0) + 1;
+            gameState.players[playerId].treasures = newCount;
+          }
+          
+          // Update leaderboard
+          if (window.uiManager && window.uiManager.updateLeaderboard) {
+            uiManager.updateLeaderboard();
+          }
+        }
+      }
     });
 
     // Event: game_won

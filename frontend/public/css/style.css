@@ -19,12 +19,12 @@ body {
   transition: all 0.3s ease;
 }
 
-.status-connected {
+.status.connected {
   background: #4CAF50;
   color: white;
 }
 
-.status-disconnected {
+.status.disconnected {
   background: #f44336;
   color: white;
 }
@@ -32,6 +32,10 @@ body {
 .status-connecting {
   background: #FF9800;
   color: white;
+}
+
+.hidden {
+  display: none;
 }
 
 /* Lobby Screens */

@@ -1,5 +1,6 @@
 // Main Game Entry Point
 // This file orchestrates all game modules and initializes the application
+// Event handling is done in ws-client.js
 
 // Global socket reference
 let socket = null;
@@ -38,8 +39,6 @@ async function requestRoomsList() {
   
   try {
     // Convert WebSocket URL to HTTP URL
-    // CONFIG.SERVER_URL is "wss://jogo-s89j.onrender.com"
-    // We need "https://jogo-s89j.onrender.com/api/rooms/"
     const httpUrl = CONFIG.SERVER_URL.replace('wss://', 'https://').replace('ws://', 'http://');
     const apiUrl = `${httpUrl}/api/rooms/`;
     Utils.logInfo("🌐 Fetching from:", apiUrl);
@@ -58,18 +57,13 @@ async function requestRoomsList() {
     const data = await response.json();
     Utils.logInfo("✅ Received rooms data:", data);
     
-    // The API might return different formats, handle both:
-    // 1. Direct array: [{ code: "abc123", ... }, ...]
-    // 2. Object with rooms: { rooms: [{ code: "abc123", ... }] }
     const rooms = Array.isArray(data) ? data : (data.rooms || []);
-    
     Utils.logInfo(`📊 Found ${rooms.length} rooms`);
     displayRoomsList(rooms);
     
   } catch (error) {
     Utils.logError("❌ Failed to fetch rooms list:", error);
     
-    // Show error state
     const loadingDiv = document.getElementById("loadingRooms");
     const noRoomsDiv = document.getElementById("noRoomsMessage");
     const roomsList = document.getElementById("roomsList");
@@ -109,10 +103,8 @@ function displayRoomsList(rooms) {
   const noRoomsDiv = document.getElementById("noRoomsMessage");
   const roomsList = document.getElementById("roomsList");
   
-  // Hide loading
   if (loadingDiv) loadingDiv.style.display = "none";
   
-  // Check if we have rooms
   if (!rooms || rooms.length === 0) {
     Utils.logInfo("ℹ️ No rooms available");
     if (noRoomsDiv) {
@@ -127,17 +119,12 @@ function displayRoomsList(rooms) {
     return;
   }
   
-  // Hide no rooms message
   if (noRoomsDiv) noRoomsDiv.style.display = "none";
-  
-  // Store rooms
   availableRooms = rooms;
   
-  // Build rooms HTML
   let roomsHTML = "";
   
   rooms.forEach(room => {
-    // Handle different possible field names from API
     const code = room.code || room.Code || room.roomCode;
     const playerCount = room.playerCount || room.PlayerCount || (room.players ? Object.keys(room.players).length : 0);
     const maxPlayers = room.maxPlayers || room.MaxPlayers || 4;
@@ -215,7 +202,6 @@ function joinRoomByCode(roomCode) {
     return;
   }
 
-  // Generate a unique player ID if not already set
   if (!gameState.myPlayerId) {
     const playerId = "player-" + Math.random().toString(36).substr(2, 9);
     gameState.setPlayerId(playerId);
@@ -224,18 +210,15 @@ function joinRoomByCode(roomCode) {
     Utils.logInfo("🆔 Using existing player ID:", gameState.myPlayerId);
   }
 
-  // Store room code
   Utils.logInfo("💾 Storing room code:", roomCode);
   gameState.pendingRoomCode = roomCode.toLowerCase();
   gameState.setRoom(roomCode.toLowerCase());
 
-  // Close existing connection if any
   if (socket && socket.ws) {
     Utils.logInfo("🔌 Closing previous WebSocket connection...");
     socket.close();
   }
 
-  // Connect to room-specific WebSocket: /ws/<ROOM_CODE>
   const roomPath = `/ws/${roomCode.toLowerCase()}`;
   Utils.logInfo("🔗 Connecting to room WebSocket:", roomPath);
   
@@ -250,14 +233,12 @@ function joinRoomByCode(roomCode) {
       Utils.logInfo("✅ Connected to room WebSocket:", s.id);
       socket = s;
       
-      // Hide rooms list screen immediately
       Utils.logInfo("🙈 Hiding rooms list screen...");
       const roomsListScreen = document.getElementById("roomsListScreen");
       if (roomsListScreen) {
         roomsListScreen.style.display = "none";
       }
       
-      // Now send join message
       Utils.logInfo("📤 Sending join message:");
       Utils.logInfo("  - Player ID:", gameState.myPlayerId);
       Utils.logInfo("  - Player Name:", gameState.myPlayerName);
@@ -276,18 +257,13 @@ function joinRoomByCode(roomCode) {
       Utils.logInfo("✅ join message sent successfully");
       Utils.logInfo("⏳ Waiting for server response...");
       
-      // Clear any existing timeout
       if (window._joinTimeout) {
         clearTimeout(window._joinTimeout);
       }
       
-      // Set a timeout to detect if server doesn't respond
       window._joinTimeout = setTimeout(() => {
         Utils.logError("⏰ Timeout: Server did not respond to join request");
-        
         alert("Timeout: O servidor não respondeu.\n\nTente atualizar a lista de salas ou criar uma nova sala.");
-        
-        // Clear the pending room code
         delete gameState.pendingRoomCode;
         window._joinTimeout = null;
       }, 5000);
@@ -304,14 +280,11 @@ function setupUI() {
 
   // Continue button (name screen)
   const continueBtn = document.getElementById("continueBtn");
-  Utils.logDebug("Continue button found:", !!continueBtn);
-
   if (continueBtn) {
     continueBtn.addEventListener("click", () => {
       Utils.logInfo("🔵 Continue button clicked!");
       const nameInput = document.getElementById("playerNameInput");
       const name = nameInput ? nameInput.value.trim() : "";
-      Utils.logDebug("Player name entered:", name);
 
       if (!name) {
         Utils.logWarn("⚠️ No name entered");
@@ -324,25 +297,16 @@ function setupUI() {
 
       Utils.logInfo("🎬 Showing lobby screen...");
       uiManager.showLobbyScreen();
-      Utils.logInfo("✅ Lobby screen should now be visible");
     });
-  } else {
-    Utils.logError("❌ Continue button not found!");
   }
 
   // Show rooms button
   const showRoomsBtn = document.getElementById("showRoomsBtn");
-  Utils.logDebug("Show rooms button found:", !!showRoomsBtn);
-
   if (showRoomsBtn) {
     showRoomsBtn.addEventListener("click", () => {
       Utils.logInfo("📋 Show rooms button clicked");
-      
-      // Show rooms list screen
       document.getElementById("lobbyScreen").style.display = "none";
       document.getElementById("roomsListScreen").style.display = "block";
-      
-      // Request rooms list from server
       requestRoomsList();
     });
   }
@@ -368,12 +332,9 @@ function setupUI() {
 
   // Create room button
   const createBtn = document.getElementById("createBtn");
-  Utils.logDebug("Create button found:", !!createBtn);
-
   if (createBtn) {
     createBtn.addEventListener("click", () => {
       Utils.logInfo("🏠 Create room button clicked");
-      Utils.logInfo("Criando sala para jogador:", gameState.myPlayerName);
       
       if (!gameState.myPlayerName) {
         Utils.logError("❌ Player name not set!");
@@ -381,27 +342,16 @@ function setupUI() {
         return;
       }
       
-      // Check connection status
-      if (!socket) {
-        Utils.logError("❌ Socket object is null");
-        alert("Não conectado ao servidor. Aguarde...");
-        return;
-      }
-      
-      if (!socket.isConnected()) {
+      if (!socket || !socket.isConnected()) {
         Utils.logError("❌ Socket not connected");
         alert("Não conectado ao servidor. Aguarde...");
         return;
       }
 
-      Utils.logInfo("✅ Socket is connected, creating room...");
-
-      // Generate a unique player ID (host)
       const playerId = "host-" + Math.random().toString(36).substr(2, 9);
       gameState.setPlayerId(playerId);
       
       Utils.logInfo("🆔 Generated host ID:", playerId);
-      Utils.logInfo("👤 Player name:", gameState.myPlayerName);
 
       const success = socket.emit("create_room", {
         playerId: playerId,
@@ -414,64 +364,47 @@ function setupUI() {
         alert("Erro ao enviar mensagem. Tente novamente.");
       } else {
         Utils.logInfo("✅ create_room message sent successfully");
-        Utils.logInfo("⏳ Waiting for room_created response...");
       }
     });
   }
 
-  // Ready button - Optimistic UI + Server Sync
-    const readyBtn = document.getElementById("readyBtn");
-
-    if (readyBtn) {
-      readyBtn.addEventListener("click", () => {
-        Utils.logInfo("✅ Ready button clicked");
-        
-        if (!gameState.myPlayerId) {
-          Utils.logError("❌ No player ID set!");
-          alert("Erro: ID do jogador não definido");
-          return;
-        }
-        
-        if (!gameState.room) {
-          Utils.logError("❌ No room set!");
-          alert("Erro: Você não está em uma sala");
-          return;
-        }
-        
-        // 1. Toggle ready status locally (optimistic update)
-        const isReady = gameState.toggleReady();
-        Utils.logInfo("🎯 Toggled ready status locally to:", isReady);
-        
-        // 2. Update UI immediately for instant feedback
-        Utils.logInfo("🎨 Updating UI optimistically...");
-        uiManager.updateReadyButton(isReady);
-        uiManager.updatePlayerList();
-        Utils.logInfo("✅ UI updated locally (will sync with server)");
-        
-        // 3. Send to server (server expects "ready" event with simple payload)
-        Utils.logInfo("📤 Sending ready status to server...");
-        const sent = socket.emit("ready", {
-          ready: isReady,
-        });
-        
-        if (!sent) {
-          Utils.logError("❌ Failed to send ready status!");
-          // Revert optimistic update
-          gameState.toggleReady();
-          uiManager.updateReadyButton(!isReady);
-          uiManager.updatePlayerList();
-          alert("Erro ao enviar status. Tente novamente.");
-          return;
-        }
-        
-        Utils.logInfo("✅ Ready status sent. Waiting for server broadcast via game_update...");
+  // Ready button
+  const readyBtn = document.getElementById("readyBtn");
+  if (readyBtn) {
+    readyBtn.addEventListener("click", () => {
+      Utils.logInfo("✅ Ready button clicked");
+      
+      if (!gameState.myPlayerId || !gameState.room) {
+        Utils.logError("❌ No player ID or room set!");
+        alert("Erro: Dados do jogador não definidos");
+        return;
+      }
+      
+      const isReady = gameState.toggleReady();
+      Utils.logInfo("🎯 Toggled ready status locally to:", isReady);
+      
+      uiManager.updateReadyButton(isReady);
+      uiManager.updatePlayerList();
+      
+      const sent = socket.emit("ready", {
+        ready: isReady,
       });
-    }
+      
+      if (!sent) {
+        Utils.logError("❌ Failed to send ready status!");
+        gameState.toggleReady();
+        uiManager.updateReadyButton(!isReady);
+        uiManager.updatePlayerList();
+        alert("Erro ao enviar status. Tente novamente.");
+        return;
+      }
+      
+      Utils.logInfo("✅ Ready status sent");
+    });
+  }
 
   // Leave button
   const leaveBtn = document.getElementById("leaveBtn");
-  Utils.logDebug("Leave button found:", !!leaveBtn);
-
   if (leaveBtn) {
     leaveBtn.addEventListener("click", () => {
       Utils.logInfo("👋 Leave button clicked");
@@ -483,7 +416,6 @@ function setupUI() {
         });
       }
       
-      Utils.logInfo("🔄 Reloading page...");
       location.reload();
     });
   }
@@ -491,11 +423,25 @@ function setupUI() {
   Utils.logInfo("✅ All UI event listeners configured");
 }
 
+// Initialize treasure collection system
+// Now delegated to treasureManager
+function initTreasureCollection() {
+  Utils.logInfo("💎 Initializing treasure collection system...");
+  
+  // Initialize treasure manager
+  if (window.treasureManager) {
+    treasureManager.init();
+    Utils.logInfo("✅ Treasure collection system active");
+  } else {
+    Utils.logError("❌ treasureManager not found! Make sure treasureManager.js is loaded.");
+  }
+}
+
 // Initialize on page load
 window.addEventListener("load", () => {
   Utils.logInfo("🚀 Página carregada, inicializando aplicação...");
 
-  // Initialize UI Manager first (setup DOM element references)
+  // Initialize UI Manager
   uiManager.init();
 
   // Initialize socket
@@ -507,57 +453,22 @@ window.addEventListener("load", () => {
   // Setup keyboard controls
   gameController.setupKeyboardControls();
 
+  // Initialize treasure collection
+  initTreasureCollection();
+
   // Setup A-Frame scene listener
   const scene = document.querySelector("a-scene");
   if (scene) {
     if (scene.hasLoaded) {
-      Utils.logInfo("A-Frame scene loaded");
+      Utils.logInfo("✅ A-Frame scene loaded");
     } else {
       scene.addEventListener("loaded", () => {
-        Utils.logInfo("A-Frame scene loaded");
+        Utils.logInfo("✅ A-Frame scene loaded");
       });
     }
   }
 
   Utils.logInfo("✅ Application initialization complete");
-});
-
-scene.addEventListener("loaded", () => {
-  Utils.logInfo("A-Frame scene loaded");
-
-  // 🟡 Lógica de coleta de tesouros via gaze (fuse)
-  document.addEventListener("click", (e) => {
-    const target = e.target;
-
-    if (target && target.classList && target.classList.contains("treasure")) {
-      const treasureId = target.id;
-
-      const treasure = gameState.treasures.find(t => t.id === treasureId);
-      if (!treasure || treasure.collected) return;
-
-      // Marcar como coletado
-      treasure.collected = true;
-
-      // Remover da cena
-      target.parentNode.removeChild(target);
-
-      // Atualizar contador de tesouros
-      gameState.myTreasureCount++;
-      uiManager.updateTreasureCount();
-
-      // Emitir evento para o servidor
-      if (gameController.socket) {
-        gameController.socket.emit("treasure_collected", {
-          playerId: gameState.myPlayerId,
-          treasureId: treasureId
-        });
-      }
-
-      // Feedback: som e UI
-      playerManager.playCollectSound();
-      uiManager.showCollectionFeedback();
-    }
-  });
 });
 
 // Expose globally for onclick handlers
@@ -582,12 +493,8 @@ style.textContent = `
   }
   
   @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
   
   @keyframes bounceIn {
