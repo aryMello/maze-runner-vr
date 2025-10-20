@@ -1,7 +1,21 @@
-// Game Controller - Main game logic
+// Game Controller - Handles game logic and player interactions
 class GameController {
   constructor() {
     this.socket = null;
+    this.camera = null;
+    this.scene = null;
+    this.raycaster = null;
+    
+    // Gaze collection system
+    this.gazeTarget = null;
+    this.gazeStartTime = 0;
+    this.gazeThreshold = 1500; // 1.5 seconds
+    this.isCollecting = false;
+    this.gazeProgressBar = null;
+  }
+
+  setSocket(socket) {
+    this.socket = socket;
   }
 
   // Collision detection
@@ -25,26 +39,6 @@ class GameController {
     }
 
     return gameState.maze[gridZ][gridX] === 1;
-  }
-
-  // Check treasure collection
-  checkTreasureCollection(x, z) {
-    gameState.treasures.forEach((treasure) => {
-      if (!treasure.collected) {
-        const dx = Math.abs(x - treasure.x);
-        const dz = Math.abs(z - treasure.z);
-        const distance = Math.sqrt(dx * dx + dz * dz);
-
-        if (distance < CONFIG.COLLECT_RADIUS) {
-          Utils.logInfo(`Coletando tesouro ${treasure.id}`);
-          this.socket.emit("collect_treasure", {
-            playerId: gameState.myPlayerId,
-            roomCode: gameState.room,
-            treasureId: treasure.id,
-          });
-        }
-      }
-    });
   }
 
   // Player movement
@@ -87,7 +81,6 @@ class GameController {
       });
 
       playerManager.playFootstep();
-      this.checkTreasureCollection(newX, newZ);
     }
   }
 
@@ -125,25 +118,26 @@ class GameController {
     });
   }
 
-  // Timer
-  startTimer() {
-    setInterval(() => {
-      uiManager.updateTimer();
-    }, 1000);
-  }
-
   // Initialize game
   initGame() {
-    Utils.logInfo("Inicializando jogo...");
-    Utils.logInfo("Maze:", gameState.maze);
-    Utils.logInfo("Treasures:", gameState.treasures);
-    Utils.logInfo("Players:", gameState.players);
-
+    Utils.logInfo("🎮 Initializing game controller...");
+    
+    this.scene = document.querySelector("a-scene");
+    this.camera = document.querySelector("[camera]");
+    
+    if (!this.camera) {
+      Utils.logError("❌ Camera not found!");
+      return;
+    }
+    
+    // Initialize gaze system for treasure collection
+    this.initGazeSystem();
+    
+    // Initialize existing game elements
     mazeRenderer.renderMaze();
     mazeRenderer.renderTreasures();
     playerManager.updatePlayerEntities();
     uiManager.updateLeaderboard();
-
     playerManager.initSounds();
 
     const totalTreasures = gameState.treasures.length;
@@ -152,39 +146,262 @@ class GameController {
     }
 
     uiManager.showCountdown();
+    
+    // Start game loop
+    this.startGameLoop();
     this.startTimer();
+    
+    Utils.logInfo("✅ Game controller initialized");
+  }
+
+  // Initialize gaze collection system
+  initGazeSystem() {
+    Utils.logInfo("👁️ Initializing gaze collection system...");
+    
+    // Create raycaster on camera
+    if (!this.camera.components.raycaster) {
+      this.camera.setAttribute("raycaster", {
+        objects: ".treasure",
+        far: 10,
+        interval: 100
+      });
+    }
+    
+    this.raycaster = this.camera.components.raycaster;
+    
+    // Create progress bar for gaze feedback
+    this.createGazeProgressBar();
+    
+    Utils.logInfo("✅ Gaze system initialized");
+  }
+
+  createGazeProgressBar() {
+    // Create a progress bar in the center of the screen
+    const progressBar = document.createElement("div");
+    progressBar.id = "gazeProgress";
+    progressBar.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 200px;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      overflow: hidden;
+      display: none;
+      z-index: 1000;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+    `;
+    
+    const progressFill = document.createElement("div");
+    progressFill.id = "gazeProgressFill";
+    progressFill.style.cssText = `
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #FFD700, #FFA500);
+      transition: width 0.1s linear;
+      box-shadow: 0 0 10px #FFD700;
+    `;
+    
+    progressBar.appendChild(progressFill);
+    document.body.appendChild(progressBar);
+    
+    this.gazeProgressBar = progressBar;
+    
+    Utils.logInfo("✅ Gaze progress bar created");
+  }
+
+  updateGazeCollection() {
+    if (!this.raycaster) return;
+    
+    const intersections = this.raycaster.intersections;
+    
+    // Find if we're looking at a treasure
+    const treasureIntersection = intersections.find(intersection => {
+      return intersection.object.el && intersection.object.el.classList.contains("treasure");
+    });
+    
+    if (treasureIntersection) {
+      const treasureEl = treasureIntersection.object.el;
+      const treasureId = treasureEl.id;
+      
+      // Check if treasure is already collected
+      const treasure = gameState.treasures.find(t => t.id === treasureId);
+      if (!treasure || treasure.collected) {
+        this.resetGaze();
+        return;
+      }
+      
+      // Start or continue gaze
+      if (this.gazeTarget !== treasureId) {
+        // New target
+        this.gazeTarget = treasureId;
+        this.gazeStartTime = Date.now();
+        this.isCollecting = true;
+        this.showGazeProgress();
+        Utils.logInfo(`👁️ Started gazing at treasure: ${treasureId}`);
+      } else {
+        // Continue gazing at same target
+        const elapsed = Date.now() - this.gazeStartTime;
+        const progress = Math.min((elapsed / this.gazeThreshold) * 100, 100);
+        
+        // Update progress bar
+        const progressFill = document.getElementById("gazeProgressFill");
+        if (progressFill) {
+          progressFill.style.width = `${progress}%`;
+        }
+        
+        // Check if collection is complete
+        if (elapsed >= this.gazeThreshold && this.isCollecting) {
+          this.isCollecting = false; // Prevent multiple collections
+          this.collectTreasure(treasureId);
+        }
+      }
+    } else {
+      // No treasure in sight
+      this.resetGaze();
+    }
+  }
+
+  showGazeProgress() {
+    if (this.gazeProgressBar) {
+      this.gazeProgressBar.style.display = "block";
+    }
+  }
+
+  hideGazeProgress() {
+    if (this.gazeProgressBar) {
+      this.gazeProgressBar.style.display = "none";
+    }
+    const progressFill = document.getElementById("gazeProgressFill");
+    if (progressFill) {
+      progressFill.style.width = "0%";
+    }
+  }
+
+  resetGaze() {
+    if (this.gazeTarget) {
+      Utils.logDebug("👁️ Gaze reset");
+      this.gazeTarget = null;
+      this.gazeStartTime = 0;
+      this.isCollecting = true;
+      this.hideGazeProgress();
+    }
+  }
+
+  collectTreasure(treasureId) {
+    Utils.logInfo(`💎 Collecting treasure: ${treasureId}`);
+    
+    // Reset gaze immediately
+    this.resetGaze();
+    
+    // Mark as collected locally (optimistic update)
+    const treasure = gameState.treasures.find(t => t.id === treasureId);
+    if (treasure) {
+      treasure.collected = true;
+    }
+    
+    // Remove from scene
+    const treasureEl = document.getElementById(treasureId);
+    if (treasureEl) {
+      treasureEl.parentNode.removeChild(treasureEl);
+      Utils.logInfo(`✅ Treasure ${treasureId} removed from scene`);
+    }
+    
+    // Send to server with correct payload format
+    if (this.socket) {
+      this.socket.emit("treasure_collected", {
+        playerId: gameState.myPlayerId,
+        treasureId: treasureId
+      });
+      Utils.logInfo(`📤 Sent treasure_collected event to server`);
+      Utils.logDebug(`📦 Payload: { playerId: "${gameState.myPlayerId}", treasureId: "${treasureId}" }`);
+    }
+    
+    // Update UI
+    playerManager.playCollectSound();
+    uiManager.showCollectionFeedback();
+    gameState.myTreasureCount++;
+    uiManager.updateTreasureCount();
+  }
+
+  startGameLoop() {
+    Utils.logInfo("🔄 Starting game loop...");
+    
+    const loop = () => {
+      if (gameState.gameStarted) {
+        // Update gaze collection
+        this.updateGazeCollection();
+        
+        // Update timer
+        uiManager.updateTimer();
+      }
+      
+      requestAnimationFrame(loop);
+    };
+    
+    loop();
+    Utils.logInfo("✅ Game loop started");
+  }
+
+  // Timer
+  startTimer() {
+    setInterval(() => {
+      uiManager.updateTimer();
+    }, 1000);
   }
 
   // Event handlers
   handleTreasureCollection(data) {
-    gameState.collectTreasure(data.treasureId, data.playerId);
-    mazeRenderer.removeTreasure(data.treasureId);
-
-    if (data.playerId === gameState.myPlayerId) {
+    Utils.logInfo("💎 Treasure collected event received:", data);
+    
+    const payload = data.payload || data;
+    const treasureId = payload.treasureId;
+    const playerId = payload.playerId;
+    
+    // Mark treasure as collected
+    const treasure = gameState.treasures.find(t => t.id === treasureId);
+    if (treasure) {
+      treasure.collected = true;
+      Utils.logInfo(`✅ Marked treasure ${treasureId} as collected`);
+    }
+    
+    // Remove from scene if still there
+    mazeRenderer.removeTreasure(treasureId);
+    
+    // Update player's treasure count
+    if (payload.treasures !== undefined && gameState.players[playerId]) {
+      gameState.players[playerId].treasures = payload.treasures;
+      Utils.logInfo(`📊 Player ${gameState.players[playerId].name} now has ${payload.treasures} treasures`);
+    }
+    
+    // Update UI
+    if (playerId === gameState.myPlayerId) {
+      gameState.myTreasureCount = payload.treasures || gameState.myTreasureCount;
       playerManager.playCollectSound();
-      uiManager.updateTreasureCount();
       uiManager.showCollectionFeedback();
+      uiManager.updateTreasureCount();
     }
-
-    // Update player treasure count from server
-    if (data.treasures !== undefined && gameState.players[data.playerId]) {
-      gameState.players[data.playerId].treasures = data.treasures;
-    }
-
+    
     uiManager.updateLeaderboard();
   }
 
   handleGameWon(data) {
-    Utils.logInfo("Game won!", data);
+    Utils.logInfo("🏆 Game won event received:", data);
+    
+    const payload = data.payload || data;
+    const winnerId = payload.playerId || payload.winnerId;
+    const winnerName = payload.playerName || gameState.players[winnerId]?.name || "Desconhecido";
+    
+    // Stop the game
     gameState.gameStarted = false;
-
+    
     playerManager.playWinSound();
 
-    const winnerName = gameState.players[data.winnerId]?.name || "Alguém";
-    const message =
-      data.winnerId === gameState.myPlayerId
-        ? "🎉 Você venceu! 🎉"
-        : `${winnerName} venceu!`;
+    const message = winnerId === gameState.myPlayerId
+      ? "🎉 Você venceu! 🎉"
+      : `🏆 ${winnerName} venceu! 🏆`;
 
     const winModal = document.createElement("div");
     winModal.style.cssText = `
@@ -202,7 +419,7 @@ class GameController {
     winModal.innerHTML = `
       <h1 style="color: white; font-size: 3em; margin: 0;">${message}</h1>
       <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${
-        data.time || "N/A"
+        payload.time || "N/A"
       }</p>
       <button onclick="location.reload()" style="
         padding: 15px 40px;
@@ -216,10 +433,6 @@ class GameController {
       ">Jogar Novamente</button>
     `;
     document.body.appendChild(winModal);
-  }
-
-  setSocket(socket) {
-    this.socket = socket;
   }
 }
 

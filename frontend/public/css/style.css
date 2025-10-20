@@ -60,7 +60,7 @@ body {
   border-radius: 20px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
   text-align: center;
-  max-width: 400px;
+  max-width: 500px;
   animation: slideIn 0.5s ease;
 }
 
@@ -163,6 +163,50 @@ button:disabled {
   box-shadow: 0 5px 15px rgba(244, 67, 54, 0.4);
 }
 
+/* Botões primários e secundários */
+.primary-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  font-size: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin: 10px;
+  transition: all 0.3s ease;
+  font-weight: 600;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  min-width: 250px;
+}
+
+.primary-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.primary-btn:active {
+  transform: translateY(0);
+}
+
+.secondary-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 5px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  width: auto;
+}
+
+.secondary-btn:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
 /* Player List */
 #playerList {
   margin: 20px 0;
@@ -195,6 +239,211 @@ button:disabled {
   color: #4CAF50;
   font-size: 12px;
   font-weight: bold;
+}
+
+/* Tela de lista de salas */
+#roomsListScreen {
+  animation: fadeIn 0.3s ease;
+}
+
+#roomsListScreen h2 {
+  color: #667eea;
+  margin-bottom: 10px;
+  font-size: 28px;
+}
+
+/* Container de salas */
+#roomsListContainer {
+  max-height: 400px;
+  overflow-y: auto;
+  margin: 20px 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+/* Lista de salas */
+.rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Card de sala individual */
+.room-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  animation: slideInRoom 0.3s ease;
+}
+
+@keyframes slideInRoom {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.room-card:hover {
+  border-color: #667eea;
+  transform: translateX(5px);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.1));
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+}
+
+.room-card.full {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: rgba(220, 53, 69, 0.3);
+}
+
+.room-card.full:hover {
+  transform: none;
+  border-color: rgba(220, 53, 69, 0.3);
+  box-shadow: none;
+}
+
+.room-card.started {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.room-card.started:hover {
+  transform: none;
+  border-color: rgba(255, 193, 7, 0.3);
+  box-shadow: none;
+}
+
+/* Informações da sala */
+.room-info {
+  flex: 1;
+  text-align: left;
+}
+
+.room-code-display {
+  font-size: 24px;
+  font-weight: bold;
+  color: #667eea;
+  margin-bottom: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.room-details {
+  display: flex;
+  gap: 20px;
+  font-size: 14px;
+  color: #666;
+}
+
+.room-detail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.room-detail-icon {
+  font-size: 16px;
+}
+
+/* Status da sala */
+.room-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.room-players {
+  font-size: 18px;
+  font-weight: 600;
+  color: #40E0D0;
+}
+
+.room-players.full {
+  color: #dc3545;
+}
+
+.room-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.room-badge.waiting {
+  background: rgba(40, 224, 208, 0.2);
+  color: #40E0D0;
+  border: 1px solid #40E0D0;
+}
+
+.room-badge.full {
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+  border: 1px solid #dc3545;
+}
+
+.room-badge.started {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  border: 1px solid #ffc107;
+}
+
+/* Mensagens */
+.loading-message {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+  font-size: 16px;
+}
+
+.no-rooms-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Ações de salas */
+.rooms-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+/* Scrollbar customizada */
+#roomsListContainer::-webkit-scrollbar {
+  width: 8px;
+}
+
+#roomsListContainer::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+
+#roomsListContainer::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.5);
+  border-radius: 10px;
+}
+
+#roomsListContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.7);
 }
 
 /* Countdown */
@@ -308,6 +557,18 @@ button:disabled {
   color: #40E0D0;
 }
 
+/* Animações */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .lobby-content {
@@ -338,6 +599,21 @@ button:disabled {
 
   #countdown {
     font-size: 80px;
+  }
+  
+  .room-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .room-status {
+    align-items: flex-start;
+    margin-top: 10px;
+  }
+  
+  .primary-btn {
+    min-width: 200px;
+    padding: 12px 20px;
   }
 }
 

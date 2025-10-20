@@ -67,6 +67,7 @@ class MazeRenderer {
       wallEl.setAttribute("src", "#wall-texture");
       wallEl.setAttribute("shadow", "cast: true; receive: true");
       wallEl.setAttribute("class", "wall");
+      wallEl.setAttribute("static-body", "");
       this.mazeContainer.appendChild(wallEl);
     });
 

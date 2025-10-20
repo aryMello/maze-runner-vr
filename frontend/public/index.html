@@ -9,7 +9,7 @@
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
-
+    
     <!-- Custom styles and scripts - Order matters! -->
     <link rel="stylesheet" href="/css/style.css" />
     <!-- 1. Configuration -->
@@ -41,7 +41,7 @@
 
         <!-- Name Entry Screen -->
         <div id="nameScreen">
-          <p class="subtitle">Insira seu nome para comecar</p>
+          <p class="subtitle">Insira seu nome para começar</p>
           <input
             type="text"
             id="playerNameInput"
@@ -53,16 +53,32 @@
 
         <!-- Room Selection Screen -->
         <div id="lobbyScreen" style="display: none">
-          <p class="subtitle">
-            Insira o codigo da sala ou crie uma sala para comecar
-          </p>
-          <input
-            type="text"
-            id="roomCode"
-            placeholder="Insira o codigo da sala (ex: ROOM123)"
-          />
-          <button id="joinBtn">Entrar em Sala</button>
-          <button id="createBtn">Criar nova Sala</button>
+          <p class="subtitle">Escolha uma opção:</p>
+          <button id="showRoomsBtn" class="primary-btn">Ver Salas Disponíveis</button>
+          <button id="createBtn" class="primary-btn">Criar Nova Sala</button>
+        </div>
+
+        <!-- Rooms List Screen -->
+        <div id="roomsListScreen" style="display: none">
+          <h2>Salas Disponíveis</h2>
+          <p class="subtitle">Selecione uma sala para entrar</p>
+          
+          <div id="roomsListContainer">
+            <div id="loadingRooms" class="loading-message">
+              Carregando salas...
+            </div>
+            <div id="noRoomsMessage" class="no-rooms-message" style="display: none">
+              Nenhuma sala disponível no momento.
+              <br><br>
+              Crie uma nova sala!
+            </div>
+            <div id="roomsList" class="rooms-list"></div>
+          </div>
+          
+          <div class="rooms-actions">
+            <button id="refreshRoomsBtn" class="secondary-btn">🔄 Atualizar</button>
+            <button id="backToLobbyBtn" class="secondary-btn">← Voltar</button>
+          </div>
         </div>
 
         <!-- Waiting Room Screen -->
@@ -71,7 +87,7 @@
           <p id="currentRoom" class="room-code"></p>
           <div id="playerList"></div>
           <p class="player-info">Min 2 jogadores • Max 4 jogadores</p>
-          <button id="readyBtn">Comecar</button>
+          <button id="readyBtn">Começar</button>
           <button id="leaveBtn" class="leave-btn">Sair da sala</button>
         </div>
       </div>
@@ -83,7 +99,7 @@
     <!-- HUD -->
     <div id="hud">
       <div>Jogador: <span id="playerName"></span></div>
-      <div>Tessouros: <span id="treasureCount">0</span>/5</div>
+      <div>Tesouros: <span id="treasureCount"></span></div>
       <div>Tempo: <span id="timer">0:00</span></div>
     </div>
 
@@ -106,46 +122,45 @@
         <!-- Textures -->
         <img
           id="grass-texture"
-          src="/assets/img/floor.png"
+          src="./assets/img/floor-dark.jpg"
           crossorigin="anonymous"
         />
         <img
           id="wall-texture"
-          src="/assets/img/brick.png"
+          src="./assets/img/brick-p.png"
           crossorigin="anonymous"
         />
         <img
           id="sky-texture"
-          src="/assets/img/sky.png"
+          src="./assets/img/sky.jpg"
           crossorigin="anonymous"
         />
 
         <!-- Audio -->
         <audio
           id="footstep-sound"
-          src="/assets/sounds/footstep.mp3"
+          src="./assets/sounds/footstep.mp3"
           preload="auto"
         ></audio>
         <audio
           id="collect-sound"
-          src="/assets/sounds/collect.mp3"
+          src="./assets/sounds/collect.mp3"
           preload="auto"
         ></audio>
         <audio
           id="ambient-sound"
-          src="/assets/sounds/ambient.mp3"
+          src="./assets/sounds/ambient.mp3"
           preload="auto"
         ></audio>
         <audio
           id="win-sound"
-          src="/assets/sounds/victory.mp3"
+          src="./assets/sounds/victory.mp3"
           preload="auto"
         ></audio>
       </a-assets>
 
       <!-- Camera and controls -->
-      <!-- Position of the camera -->
-      <a-entity id="rig" position="0 3 0"> 
+      <a-entity id="rig" position="0 1 0"> 
         <a-camera
           id="player-camera"
           look-controls
@@ -157,8 +172,7 @@
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
             material="color: #40E0D0; shader: flat; transparent: true; opacity: 0.9"
-            raycaster="objects: .clickable; far: 25; interval: 100"
-          >
+            raycaster="objects: .clickable, .treasure; far: 25; interval: 100"          >
           </a-entity>
         </a-camera>
       </a-entity>
