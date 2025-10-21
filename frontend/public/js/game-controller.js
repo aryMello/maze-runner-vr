@@ -12,110 +12,352 @@ class GameController {
     this.gazeThreshold = 1500; // 1.5 seconds
     this.isCollecting = false;
     this.gazeProgressBar = null;
+    
+    // Keyboard state for continuous movement
+    this.keysPressed = {
+      north: false,
+      south: false,
+      west: false,
+      east: false
+    };
+    this.lastMoveTime = 0;
+    this.moveInterval = 100; // Move every 100ms when key is held
   }
 
   setSocket(socket) {
     this.socket = socket;
   }
 
-  // Collision detection
+  // Collision detection - checks if position would collide with wall
   checkWallCollision(x, z) {
     if (!gameState.maze || gameState.maze.length === 0) return false;
 
     const cellSize = gameState.cellSize;
-    const offsetX = (gameState.maze[0].length * cellSize) / 2;
-    const offsetZ = (gameState.maze.length * cellSize) / 2;
+    const mazeWidth = gameState.maze[0].length;
+    const mazeHeight = gameState.maze.length;
+    const offsetX = (mazeWidth * cellSize) / 2;
+    const offsetZ = (mazeHeight * cellSize) / 2;
 
-    const gridX = Math.floor((x + offsetX) / cellSize);
-    const gridZ = Math.floor((z + offsetZ) / cellSize);
+    // Convert world coordinates to grid coordinates
+    const worldX = x * cellSize - offsetX;
+    const worldZ = z * cellSize - offsetZ;
+    
+    // Get grid cell
+    const gridX = Math.floor((worldX + offsetX) / cellSize);
+    const gridZ = Math.floor((worldZ + offsetZ) / cellSize);
 
+    // Check bounds
     if (
       gridZ < 0 ||
-      gridZ >= gameState.maze.length ||
+      gridZ >= mazeHeight ||
       gridX < 0 ||
-      gridX >= gameState.maze[0].length
+      gridX >= mazeWidth
     ) {
+      Utils.logDebug(`🚫 Out of bounds: grid(${gridX}, ${gridZ})`);
       return true;
     }
 
-    return gameState.maze[gridZ][gridX] === 1;
+    // Check if cell is a wall
+    const isWall = gameState.maze[gridZ][gridX] === 1;
+    
+    if (isWall) {
+      Utils.logDebug(`🧱 Wall detected at grid(${gridX}, ${gridZ})`);
+    }
+    
+    return isWall;
+  }
+  
+  // Additional collision check with player radius (for smoother collision)
+  checkWallCollisionWithRadius(x, z, radius = 0.25) {
+    // Check center point
+    if (this.checkWallCollision(x, z)) return true;
+    
+    // Check corners of player's bounding box
+    const offsets = [
+      { dx: radius, dz: radius },
+      { dx: radius, dz: -radius },
+      { dx: -radius, dz: radius },
+      { dx: -radius, dz: -radius }
+    ];
+    
+    for (const offset of offsets) {
+      if (this.checkWallCollision(x + offset.dx, z + offset.dz)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
-  // Player movement
+  // Player movement with smooth interpolation
   movePlayer(direction) {
     if (!gameState.gameStarted) return;
 
     const player = gameState.players[gameState.myPlayerId];
     if (!player) return;
 
-    let newX = player.x;
-    let newZ = player.z;
+    // Store old position
+    const oldX = player.x;
+    const oldZ = player.z;
+    
+    // Calculate new position with EXACT 0.1 steps
+    let newX = oldX;
+    let newZ = oldZ;
     let directionAngle = player.direction || 0;
 
+    // CRITICAL: Use exact decimal addition/subtraction
     switch (direction) {
       case "north":
-        newZ -= CONFIG.MOVE_SPEED;
+        newZ = Math.round((oldZ - 0.1) * 10) / 10; // Round to 1 decimal place
         directionAngle = 0;
         break;
       case "south":
-        newZ += CONFIG.MOVE_SPEED;
+        newZ = Math.round((oldZ + 0.1) * 10) / 10;
         directionAngle = 180;
         break;
       case "west":
-        newX -= CONFIG.MOVE_SPEED;
+        newX = Math.round((oldX - 0.1) * 10) / 10;
         directionAngle = 270;
         break;
       case "east":
-        newX += CONFIG.MOVE_SPEED;
+        newX = Math.round((oldX + 0.1) * 10) / 10;
         directionAngle = 90;
         break;
     }
 
-    if (!this.checkWallCollision(newX, newZ)) {
-      this.socket.emit("move_player", {
-        playerId: gameState.myPlayerId,
-        roomCode: gameState.room,
-        x: newX,
-        z: newZ,
-        direction: directionAngle,
-      });
+    // Debug log BEFORE collision check
+    Utils.logDebug(`🎯 Attempting move ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
 
-      playerManager.playFootstep();
+    // CRITICAL: Check wall collision BEFORE moving
+    if (this.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
+      Utils.logDebug(`🚫 BLOCKED! Wall collision at (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+      return; // Don't move!
     }
+
+    // No collision - safe to move!
+    // Update local state FIRST (optimistic update)
+    player.x = newX;
+    player.z = newZ;
+    player.direction = directionAngle;
+    
+    Utils.logInfo(`🚶 Moving ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)}) dir=${directionAngle}°`);
+
+    // Move camera with smooth animation
+    this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ, directionAngle);
+
+    // Broadcast to server with EXACT position
+    const sent = this.socket.emit("player_update", {
+      playerId: gameState.myPlayerId,
+      roomCode: gameState.room,
+      x: newX,
+      z: newZ,
+      direction: directionAngle,
+    });
+
+    if (sent) {
+      Utils.logDebug(`✅ Broadcasted position: (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+      
+      // Update 3D entity locally
+      const playerArray = Object.keys(gameState.players);
+      const colorIdx = playerArray.indexOf(gameState.myPlayerId);
+      playerManager.updatePlayerEntity(gameState.myPlayerId, colorIdx);
+    } else {
+      Utils.logError("❌ Failed to broadcast position!");
+      // Rollback local state
+      player.x = oldX;
+      player.z = oldZ;
+    }
+
+    playerManager.playFootstep();
   }
 
-  // Keyboard controls
+  // Smooth camera movement with interpolation
+  smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ, direction) {
+    if (!this.camera) return;
+
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+    
+    // Calculate world positions
+    const oldWorldX = oldX * cellSize - offsetX;
+    const oldWorldZ = oldZ * cellSize - offsetZ;
+    const newWorldX = newX * cellSize - offsetX;
+    const newWorldZ = newZ * cellSize - offsetZ;
+    
+    // Get camera rig (parent of camera)
+    const cameraRig = this.camera.parentElement;
+    const targetElement = (cameraRig && cameraRig.id === 'rig') ? cameraRig : this.camera;
+    
+    // Camera height (eye level - on top of player's head)
+    const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
+    
+    // Use A-Frame animation for smooth movement
+    targetElement.setAttribute('animation__move', {
+      property: 'position',
+      from: `${oldWorldX} ${cameraHeight} ${oldWorldZ}`,
+      to: `${newWorldX} ${cameraHeight} ${newWorldZ}`,
+      dur: CONFIG.CAMERA_SMOOTH_TIME || 150, // 150ms for smooth but responsive movement
+      easing: 'easeOutQuad'
+    });
+    
+    // Smooth rotation (only Y-axis for looking direction)
+    const currentRotation = targetElement.getAttribute('rotation') || {x: 0, y: 0, z: 0};
+    const currentY = typeof currentRotation.y === 'number' ? currentRotation.y : 0;
+    
+    // Calculate shortest rotation path
+    let targetY = direction;
+    let diff = targetY - currentY;
+    
+    // Normalize to [-180, 180]
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+    
+    const finalY = currentY + diff;
+    
+    targetElement.setAttribute('animation__rotate', {
+      property: 'rotation',
+      from: `0 ${currentY} 0`,
+      to: `0 ${finalY} 0`,
+      dur: CONFIG.CAMERA_SMOOTH_TIME || 150,
+      easing: 'easeOutQuad'
+    });
+    
+    Utils.logDebug(`📹 Camera smoothly moving to (${newWorldX.toFixed(1)}, ${cameraHeight}, ${newWorldZ.toFixed(1)}) facing ${direction}°`);
+  }
+
+  // Move camera to follow player (instant - used for initial positioning)
+  moveCameraToPlayer(gridX, gridZ) {
+    if (!this.camera) return;
+
+    // Calculate world position (same formula as player rendering)
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+    
+    const worldX = gridX * cellSize - offsetX;
+    const worldZ = gridZ * cellSize - offsetZ;
+    
+    // Camera height (eye level)
+    const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
+    
+    // Get camera rig (parent of camera)
+    const cameraRig = this.camera.parentElement;
+    if (cameraRig && cameraRig.id === 'rig') {
+      cameraRig.setAttribute('position', `${worldX} ${cameraHeight} ${worldZ}`);
+    } else {
+      // If no rig, position camera directly
+      this.camera.setAttribute('position', `${worldX} ${cameraHeight} ${worldZ}`);
+    }
+    
+    Utils.logDebug(`📹 Camera positioned at (${worldX}, ${cameraHeight}, ${worldZ})`);
+  }
+
+  // Keyboard controls with continuous movement
   setupKeyboardControls() {
     document.addEventListener("keydown", (e) => {
       if (!gameState.gameStarted) return;
-
+      
+      let direction = null;
+      
       switch (e.key) {
         case "w":
         case "W":
         case "ArrowUp":
-          this.movePlayer("north");
+          direction = "north";
           e.preventDefault();
           break;
         case "s":
         case "S":
         case "ArrowDown":
-          this.movePlayer("south");
+          direction = "south";
           e.preventDefault();
           break;
         case "a":
         case "A":
         case "ArrowLeft":
-          this.movePlayer("west");
+          direction = "west";
           e.preventDefault();
           break;
         case "d":
         case "D":
         case "ArrowRight":
-          this.movePlayer("east");
+          direction = "east";
           e.preventDefault();
           break;
       }
+      
+      if (direction && !this.keysPressed[direction]) {
+        this.keysPressed[direction] = true;
+        this.movePlayer(direction); // Immediate move on key press
+      }
     });
+    
+    document.addEventListener("keyup", (e) => {
+      if (!gameState.gameStarted) return;
+      
+      switch (e.key) {
+        case "w":
+        case "W":
+        case "ArrowUp":
+          this.keysPressed.north = false;
+          break;
+        case "s":
+        case "S":
+        case "ArrowDown":
+          this.keysPressed.south = false;
+          break;
+        case "a":
+        case "A":
+        case "ArrowLeft":
+          this.keysPressed.west = false;
+          break;
+        case "d":
+        case "D":
+        case "ArrowRight":
+          this.keysPressed.east = false;
+          break;
+      }
+    });
+    
+    // Continuous movement when key is held
+    this.startContinuousMovement();
+  }
+  
+  // Handle continuous movement when keys are held
+  startContinuousMovement() {
+    const updateMovement = () => {
+      if (!gameState.gameStarted) {
+        requestAnimationFrame(updateMovement);
+        return;
+      }
+      
+      const now = Date.now();
+      
+      // Rate limit movement
+      if (now - this.lastMoveTime >= this.moveInterval) {
+        // Check which direction is pressed (priority order)
+        if (this.keysPressed.north) {
+          this.movePlayer("north");
+          this.lastMoveTime = now;
+        } else if (this.keysPressed.south) {
+          this.movePlayer("south");
+          this.lastMoveTime = now;
+        } else if (this.keysPressed.west) {
+          this.movePlayer("west");
+          this.lastMoveTime = now;
+        } else if (this.keysPressed.east) {
+          this.movePlayer("east");
+          this.lastMoveTime = now;
+        }
+      }
+      
+      requestAnimationFrame(updateMovement);
+    };
+    
+    updateMovement();
   }
 
   // Initialize game
@@ -128,6 +370,19 @@ class GameController {
     if (!this.camera) {
       Utils.logError("❌ Camera not found!");
       return;
+    }
+    
+    // Position camera at player's starting position
+    const player = gameState.players[gameState.myPlayerId];
+    if (player) {
+      this.moveCameraToPlayer(player.x, player.z);
+      
+      // Set initial rotation
+      const cameraRig = this.camera.parentElement;
+      const targetElement = (cameraRig && cameraRig.id === 'rig') ? cameraRig : this.camera;
+      targetElement.setAttribute('rotation', `0 ${player.direction || 0} 0`);
+      
+      Utils.logInfo(`📹 Camera initialized at player position (${player.x}, ${player.z}) facing ${player.direction}°`);
     }
     
     // Initialize gaze system for treasure collection
