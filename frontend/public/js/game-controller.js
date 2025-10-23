@@ -108,7 +108,7 @@ class GameController {
     // CRITICAL: Use exact decimal addition/subtraction
     switch (direction) {
       case "north":
-        newZ = Math.round((oldZ - 0.1) * 10) / 10; // Round to 1 decimal place
+        newZ = Math.round((oldZ - 0.1) * 10) / 10;
         directionAngle = 0;
         break;
       case "south":
@@ -142,8 +142,8 @@ class GameController {
     
     Utils.logInfo(`🚶 Moving ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)}) dir=${directionAngle}°`);
 
-    // Move camera with smooth animation
-    this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ, directionAngle);
+    // Move camera with smooth animation (POSITION ONLY - NO ROTATION)
+    this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ);
 
     // Broadcast to server with EXACT position
     const sent = this.socket.emit("player_update", {
@@ -171,8 +171,8 @@ class GameController {
     playerManager.playFootstep();
   }
 
-  // Smooth camera movement with interpolation
-  smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ, direction) {
+  // Smooth camera movement WITHOUT rotation (FIXED!)
+  smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ) {
     if (!this.camera) return;
 
     const cellSize = gameState.cellSize;
@@ -193,38 +193,19 @@ class GameController {
     // Camera height (eye level - on top of player's head)
     const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
     
-    // Use A-Frame animation for smooth movement
+    // ONLY animate position - NO rotation changes!
     targetElement.setAttribute('animation__move', {
       property: 'position',
       from: `${oldWorldX} ${cameraHeight} ${oldWorldZ}`,
       to: `${newWorldX} ${cameraHeight} ${newWorldZ}`,
-      dur: CONFIG.CAMERA_SMOOTH_TIME || 150, // 150ms for smooth but responsive movement
-      easing: 'easeOutQuad'
-    });
-    
-    // Smooth rotation (only Y-axis for looking direction)
-    const currentRotation = targetElement.getAttribute('rotation') || {x: 0, y: 0, z: 0};
-    const currentY = typeof currentRotation.y === 'number' ? currentRotation.y : 0;
-    
-    // Calculate shortest rotation path
-    let targetY = direction;
-    let diff = targetY - currentY;
-    
-    // Normalize to [-180, 180]
-    while (diff > 180) diff -= 360;
-    while (diff < -180) diff += 360;
-    
-    const finalY = currentY + diff;
-    
-    targetElement.setAttribute('animation__rotate', {
-      property: 'rotation',
-      from: `0 ${currentY} 0`,
-      to: `0 ${finalY} 0`,
       dur: CONFIG.CAMERA_SMOOTH_TIME || 150,
       easing: 'easeOutQuad'
     });
     
-    Utils.logDebug(`📹 Camera smoothly moving to (${newWorldX.toFixed(1)}, ${cameraHeight}, ${newWorldZ.toFixed(1)}) facing ${direction}°`);
+    // Remove any existing rotation animation
+    targetElement.removeAttribute('animation__rotate');
+    
+    Utils.logDebug(`📹 Camera smoothly moving to (${newWorldX.toFixed(1)}, ${cameraHeight}, ${newWorldZ.toFixed(1)}) - Free look enabled`);
   }
 
   // Move camera to follow player (instant - used for initial positioning)
@@ -372,17 +353,29 @@ class GameController {
       return;
     }
     
+    // CRITICAL: Disable A-Frame's built-in WASD controls (we handle movement ourselves)
+    const cameraEl = this.camera;
+    if (cameraEl.hasAttribute('wasd-controls')) {
+      cameraEl.setAttribute('wasd-controls', 'enabled: false');
+      Utils.logInfo("🚫 Disabled A-Frame WASD controls");
+    }
+    
+    // Get camera rig
+    const cameraRig = cameraEl.parentElement;
+    if (cameraRig && cameraRig.id === 'rig') {
+      if (cameraRig.hasAttribute('wasd-controls')) {
+        cameraRig.setAttribute('wasd-controls', 'enabled: false');
+        Utils.logInfo("🚫 Disabled A-Frame WASD controls on rig");
+      }
+    }
+    
     // Position camera at player's starting position
     const player = gameState.players[gameState.myPlayerId];
     if (player) {
       this.moveCameraToPlayer(player.x, player.z);
       
-      // Set initial rotation
-      const cameraRig = this.camera.parentElement;
-      const targetElement = (cameraRig && cameraRig.id === 'rig') ? cameraRig : this.camera;
-      targetElement.setAttribute('rotation', `0 ${player.direction || 0} 0`);
-      
-      Utils.logInfo(`📹 Camera initialized at player position (${player.x}, ${player.z}) facing ${player.direction}°`);
+      // NO initial rotation setup - let player freely look around
+      Utils.logInfo(`📹 Camera initialized at player position (${player.x}, ${player.z}) with free mouse look`);
     }
     
     // Initialize gaze system for treasure collection
@@ -406,7 +399,7 @@ class GameController {
     this.startGameLoop();
     this.startTimer();
     
-    Utils.logInfo("✅ Game controller initialized");
+    Utils.logInfo("✅ Game controller initialized with free camera look");
   }
 
   // Initialize gaze collection system
