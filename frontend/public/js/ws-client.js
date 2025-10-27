@@ -269,8 +269,6 @@ class WSClient {
     // ===== ROOM EVENTS =====
     
     // Event: room_created
-    // FLUXO HOST: Quando o host cria uma sala
-    // CRITICAL: Host keeps BOTH connections (general + room) to keep room alive!
     this.on("room_created", (data) => {
       Utils.logInfo("🏠 Room created - HOST received from server");
 
@@ -285,17 +283,14 @@ class WSClient {
         hasPlayers: !!(room.players)
       });
 
-      // 1. Set room code
       const roomCode = payload.code || room.code;
       gameState.setRoom(roomCode);
       Utils.logInfo("🏷️ Room code set:", roomCode);
 
-      // 2. Set player ID (host)
       const hostId = room.host || payload.host;
       gameState.setPlayerId(hostId);
       Utils.logInfo("👤 Host ID set:", hostId);
 
-      // 3. Store maze and treasures data for later (when game starts)
       if (room.maze) {
         Utils.logInfo("🗺️ Storing maze data (will render when game starts)");
         gameState.setMaze(room.maze);
@@ -311,75 +306,26 @@ class WSClient {
         gameState.updatePlayers(room.players);
       }
 
-      // 4. CRITICAL: Create SECOND connection to room (keep first alive!)
-      Utils.logInfo("🔗 Creating SECOND WebSocket connection to room...");
-      Utils.logInfo("⚠️ Keeping general /ws connection alive to prevent room deletion!");
+      Utils.logInfo("📤 Sending join message as HOST...");
+      const joinSent = this.emit("join", {
+        playerId: hostId,
+        name: gameState.myPlayerName,
+      });
       
-      const roomPath = `/ws/${roomCode.toLowerCase()}`;
-      Utils.logInfo("🔗 Connecting to room WebSocket:", roomPath);
+      if (joinSent) {
+        Utils.logInfo("✅ Join message sent successfully");
+      } else {
+        Utils.logError("❌ Failed to send join message");
+      }
       
-      const roomClient = new WSClient(
-        CONFIG.SERVER_URL,
-        roomPath,
-        CONFIG.IS_LOCAL
-      );
-
-      roomClient.connect()
-        .then((roomSocket) => {
-          Utils.logInfo("✅ HOST connected to room WebSocket:", roomSocket.id);
-          
-          // Store BOTH sockets
-          window.generalSocket = socket; // Keep general connection alive
-          window.roomSocket = roomSocket; // Room-specific connection
-          
-          // Use room socket as main socket for communication
-          socket = roomSocket;
-          window.socket = roomSocket;
-          gameController.setSocket(roomSocket);
-          
-          // CRITICAL: Setup event handlers on room socket!
-          Utils.logInfo("🎧 Setting up event handlers on room socket...");
-          roomSocket.setupHandlers();
-          
-          // Send join message on room socket
-          Utils.logInfo("📤 Sending join message as HOST on room socket...");
-          const joinSent = roomSocket.emit("join", {
-            playerId: hostId,
-            name: gameState.myPlayerName,
-          });
-          
-          if (joinSent) {
-            Utils.logInfo("✅ Join message sent successfully on room socket");
-          } else {
-            Utils.logError("❌ Failed to send join message on room socket");
-          }
-          
-          // Show waiting room (lobby) for HOST
-          Utils.logInfo("🚪 Showing lobby for HOST...");
-          uiManager.showWaitingRoom(roomCode);
-          uiManager.updatePlayerList();
-          Utils.logInfo("✅ HOST lobby is now visible");
-          Utils.logInfo("🔌 HOST has 2 connections:");
-          Utils.logInfo("  - General: /ws (keeps room alive)");
-          Utils.logInfo("  - Room: /ws/" + roomCode + " (receives broadcasts)");
-        })
-        .catch((err) => {
-          Utils.logError("❌ Failed to connect HOST to room WebSocket:", err);
-          alert("Erro ao conectar à sala. Tente novamente.");
-        });
+      Utils.logInfo("🚪 Showing lobby for HOST...");
+      uiManager.showWaitingRoom(roomCode);
+      uiManager.updatePlayerList();
+      Utils.logInfo("✅ HOST lobby is now visible");
     });
 
     // ===== PLAYER EVENTS =====
     
-    // Event: player_joined
-    // FLUXO DUAL:
-    // A) Para HOST e outros players já na sala:
-    //    - Recebe notificação de novo player
-    //    - Atualiza o board do lobby com novo player
-    // B) Para o PLAYER que acabou de entrar:
-    //    - Recebe confirmação de entrada com seus dados
-    //    - Redireciona para o lobby
-    //    - Pode atualizar seu status (ready)
     this.on("player_joined", (data) => {
       Utils.logInfo("👤 Player joined event - received from server");
       Utils.logInfo("📦 Player joined data:", JSON.stringify(data, null, 2));
@@ -398,19 +344,15 @@ class WSClient {
         isMe: payload.id === gameState.myPlayerId
       });
 
-      // CASO A: Lista completa de players (estado completo da sala)
       if (payload.players) {
         Utils.logInfo("👥 Received FULL players list (room state)");
         Utils.logInfo("Players in room:", Object.keys(payload.players));
         
-        // Merge players instead of replacing completely
         Object.keys(payload.players).forEach(playerId => {
           if (gameState.players[playerId]) {
-            // Update existing player
             Utils.logInfo(`  ↻ Updating existing player: ${payload.players[playerId].name}`);
             Object.assign(gameState.players[playerId], payload.players[playerId]);
           } else {
-            // Add new player
             Utils.logInfo(`  + Adding new player: ${payload.players[playerId].name}`);
             gameState.players[playerId] = payload.players[playerId];
           }
@@ -419,30 +361,25 @@ class WSClient {
         Utils.logInfo("✅ All players merged into game state");
         Utils.logInfo("📊 Total players now:", Object.keys(gameState.players).length);
       }
-      // CASO B: Dados de um único player
       else if (payload.id && payload.name) {
         const isMe = payload.id === gameState.myPlayerId;
         const isNewPlayer = !gameState.players[payload.id];
         
         if (isMe) {
-          // SOU EU entrando na sala
           Utils.logInfo("🎯 This is MY player_joined confirmation!");
           
-          // Clear join timeout
           if (window._joinTimeout) {
             clearTimeout(window._joinTimeout);
             window._joinTimeout = null;
             Utils.logInfo("✅ Cleared join timeout");
           }
           
-          // Adicionar meus dados
           const myData = {};
           myData[payload.id] = payload;
           gameState.updatePlayers(myData);
           
           Utils.logInfo("✅ My player data set");
           
-          // REDIRECIONAR para lobby
           const roomCode = gameState.room || gameState.pendingRoomCode || "SALA";
           Utils.logInfo("🚪 Redirecting ME to lobby:", roomCode);
           uiManager.showWaitingRoom(roomCode);
@@ -450,7 +387,6 @@ class WSClient {
           Utils.logInfo("✅ Now in lobby! I can mark myself as ready.");
           
         } else if (isNewPlayer) {
-          // OUTRO player entrando (notificação para mim)
           Utils.logInfo("👋 NEW player joining the room:", payload.name);
           
           const newPlayerData = {};
@@ -460,13 +396,11 @@ class WSClient {
           Utils.logInfo("✅ New player added to game state");
           Utils.logInfo("📊 Total players now:", Object.keys(gameState.players).length);
           
-          // Atualizar o board do lobby
           Utils.logInfo("📋 Updating player list...");
           uiManager.updatePlayerList();
         }
       }
 
-      // Se o jogo já começou, atualizar entidades 3D
       if (gameState.gameStarted && gameState.maze && gameState.maze.length > 0) {
         Utils.logInfo("🎮 Game is running, updating player entities...");
         playerManager.updatePlayerEntities();
@@ -475,8 +409,6 @@ class WSClient {
       }
     });
 
-    // Event: player_left
-    // Quando um jogador sai da sala
     this.on("player_left", (data) => {
       Utils.logInfo("👋 Player left:", data);
       
@@ -500,8 +432,6 @@ class WSClient {
       }
     });
 
-    // Event: ready
-    // Quando um jogador marca/desmarca ready
     this.on("ready", (data) => {
       Utils.logInfo("✅ Ready status update:", data);
       
@@ -515,10 +445,8 @@ class WSClient {
         playerId: payload.playerId || payload.id
       });
       
-      // Update the player's ready status
       if (payload.players) {
         Utils.logInfo("📋 Updating all players ready status from full list");
-        // Merge players instead of replacing
         Object.keys(payload.players).forEach(playerId => {
           if (gameState.players[playerId]) {
             gameState.players[playerId].ready = payload.players[playerId].ready;
@@ -540,9 +468,6 @@ class WSClient {
           Utils.logWarn(`⚠️ Player ${playerId} not found in game state!`);
         }
       } else {
-        // Server sent incomplete payload (just {ready: true/false})
-        // This happens when server doesn't include playerId
-        // We'll wait for game_update to sync the full state
         Utils.logWarn("⚠️ Incomplete ready event (no playerId). Will sync via game_update.");
         return;
       }
@@ -556,33 +481,31 @@ class WSClient {
       Utils.logInfo("✅ Player list UI updated");
     });
 
-    // Alias: player_ready (caso o servidor use este nome)
     this.on("player_ready", (data) => {
       Utils.logInfo("✅ Player ready:", data);
       this.trigger("ready", data);
     });
 
-    // Event: player_update
-    // CRITICAL: Real-time position synchronization
-    // When ANY player moves, ALL other players receive this update
-    this.on("player_update", (data) => {
+    // FIXED: Event "move" - Real-time position sync
+    // This is THE CRITICAL handler for live position updates!
+    this.on("move", (data) => {
+      Utils.logInfo("🚶 Move event received from server");
+      
       const payload = data.payload || data;
-      // Server can send either "id" or "playerId"
       const playerId = payload.playerId || payload.id;
       
       if (!playerId) {
-        Utils.logWarn("⚠️ player_update without playerId:", payload);
-        Utils.logWarn("Payload keys:", Object.keys(payload));
+        Utils.logWarn("⚠️ Move event without playerId:", payload);
         return;
       }
       
       // Skip my own updates (already handled locally)
       if (playerId === gameState.myPlayerId) {
-        Utils.logDebug("⏭️ Skipping my own player_update");
+        Utils.logDebug("⏭️ Skipping my own move update");
         return;
       }
       
-      // Check if player exists in game state
+      // Check if player exists
       if (!gameState.players[playerId]) {
         Utils.logWarn(`⚠️ Player ${playerId} not found in game state`);
         Utils.logWarn("Available players:", Object.keys(gameState.players));
@@ -593,101 +516,79 @@ class WSClient {
       const playerName = player.name || playerId;
       const oldPos = {x: player.x, z: player.z, dir: player.direction};
       
-      // Update position IMMEDIATELY with exact values from server
+      // Update position IMMEDIATELY
       let positionChanged = false;
       
-      if (payload.x !== undefined) {
+      if (payload.x !== undefined && payload.x !== player.x) {
         player.x = payload.x;
         positionChanged = true;
       }
-      if (payload.z !== undefined) {
+      if (payload.z !== undefined && payload.z !== player.z) {
         player.z = payload.z;
         positionChanged = true;
       }
-      if (payload.direction !== undefined) {
+      if (payload.direction !== undefined && payload.direction !== player.direction) {
         player.direction = payload.direction;
-      }
-      if (payload.treasures !== undefined && payload.treasures !== player.treasures) {
-        player.treasures = payload.treasures;
-        Utils.logInfo(`💎 ${playerName} treasures: ${player.treasures}`);
       }
       
       if (positionChanged) {
         Utils.logInfo(`🚶 ${playerName} moved: (${oldPos.x.toFixed(1)}, ${oldPos.z.toFixed(1)}) → (${player.x.toFixed(1)}, ${player.z.toFixed(1)}) [dir: ${payload.direction}°]`);
-      }
-      
-      // Update 3D entity IMMEDIATELY if game has started
-      if (gameState.gameStarted) {
-        if (positionChanged) {
-          // Get player color index
-          const playerArray = Object.keys(gameState.players);
-          const colorIdx = playerArray.indexOf(playerId);
-          
-          Utils.logDebug(`🎨 Updating 3D entity for ${playerName}`);
-          playerManager.updatePlayerEntity(playerId, colorIdx);
-        }
         
-        // Update leaderboard if treasures changed
-        if (payload.treasures !== undefined) {
-          uiManager.updateLeaderboard();
+        // Update 3D entity IMMEDIATELY
+        if (gameState.gameStarted) {
+          const colorIdx = playerManager.getPlayerColorIndex(playerId);
+          playerManager.updatePlayerEntity(playerId, colorIdx);
+          Utils.logInfo(`✅ Updated 3D entity for ${playerName}`);
         }
-      } else {
-        Utils.logDebug("⏸️ Game not started yet, position stored but not rendered");
       }
     });
 
     // ===== GAME EVENTS =====
     
     this.on("game_start", (data) => {
-    Utils.logInfo("🎮 Game start! (from server) All players are ready!");
+      Utils.logInfo("🎮 Game start! (from server) All players are ready!");
 
-    // Esconder status de conexão
-    const statusEl = document.getElementById("connectionStatus");
-    if (statusEl) {
-      statusEl.classList.add("hidden");
-    }
-    
-    gameState.gameStarted = true;
-    gameState.startGame(data);
-    
-    uiManager.hideLobby();
-    gameController.initGame();
-    
-    setTimeout(() => {
-      Utils.logInfo("🎨 NOW RENDERING: Game world...");
-      
-      if (gameState.maze && gameState.maze.length > 0) {
-        mazeRenderer.renderMaze();
+      const statusEl = document.getElementById("connectionStatus");
+      if (statusEl) {
+        statusEl.classList.add("hidden");
       }
       
-      if (gameState.treasures && gameState.treasures.length > 0) {
-        if (window.treasureManager) {
-          treasureManager.setTreasures(gameState.treasures);
-          treasureManager.renderTreasures();
-          treasureManager.startProximityCheck();
-        } else {
-          mazeRenderer.renderTreasures();
+      gameState.gameStarted = true;
+      gameState.startGame(data);
+      
+      uiManager.hideLobby();
+      gameController.initGame();
+      
+      setTimeout(() => {
+        Utils.logInfo("🎨 NOW RENDERING: Game world...");
+        
+        if (gameState.maze && gameState.maze.length > 0) {
+          mazeRenderer.renderMaze();
         }
-      }
-      
-      if (Object.keys(gameState.players).length > 0) {
-        playerManager.updatePlayerEntities();
-      }
-      
-      Utils.logInfo("✅ Game world rendered! Let's play! 🎮");
-    }, 200);
-  });
+        
+        if (gameState.treasures && gameState.treasures.length > 0) {
+          if (window.treasureManager) {
+            treasureManager.setTreasures(gameState.treasures);
+            treasureManager.renderTreasures();
+            treasureManager.startProximityCheck();
+          } else {
+            mazeRenderer.renderTreasures();
+          }
+        }
+        
+        if (Object.keys(gameState.players).length > 0) {
+          playerManager.updatePlayerEntities();
+        }
+        
+        Utils.logInfo("✅ Game world rendered! Let's play! 🎮");
+      }, 200);
+    });
 
-    // Alias: game_starting (caso o servidor use este nome)
     this.on("game_starting", (data) => {
       Utils.logInfo("🎮 Game starting!");
       this.trigger("game_start", data);
     });
 
-    // Event: game_update
-    // FLUXO CRÍTICO: Este evento serve para múltiplos propósitos:
-    // 1. Sincronização do estado da sala no lobby
-    // 2. Durante o jogo para sincronização de estado
     this.on("game_update", (data) => {
       Utils.logInfo("🔄 Game update received");
 
@@ -705,7 +606,6 @@ class WSClient {
         gameStarted: gameState.gameStarted
       });
       
-      // Log all players in the payload for debugging
       if (payload.players) {
         Utils.logInfo("👥 Players in game_update:");
         Object.values(payload.players).forEach(p => {
@@ -713,11 +613,9 @@ class WSClient {
         });
       }
       
-      // CASO 1: Atualização durante o lobby (antes do jogo começar)
       if (!gameState.gameStarted && gameState.room && payload.players) {
         Utils.logInfo("🔄 CASE 1: Lobby update - syncing player list");
         
-        // Armazenar dados da sala se ainda não tiver
         if (payload.maze && (!gameState.maze || gameState.maze.length === 0)) {
           Utils.logInfo("🗺️ Storing maze data...");
           gameState.setMaze(payload.maze);
@@ -728,7 +626,6 @@ class WSClient {
           gameState.setTreasures(payload.treasures);
         }
         
-        // Detectar novos players e fazer merge
         const oldPlayerIds = Object.keys(gameState.players);
         const newPlayerIds = Object.keys(payload.players);
         
@@ -738,33 +635,27 @@ class WSClient {
           }
         });
         
-        // SERVER IS SOURCE OF TRUTH - Always sync from server
         Utils.logInfo("👥 Syncing ALL players from server (server = source of truth)");
         Object.keys(payload.players).forEach(playerId => {
           const serverPlayer = payload.players[playerId];
           const localPlayer = gameState.players[playerId];
           
           if (localPlayer) {
-            // Check if ready status differs
             if (localPlayer.ready !== serverPlayer.ready) {
               const isMe = playerId === gameState.myPlayerId;
               Utils.logInfo(`  🔄 Ready status changed for ${serverPlayer.name}: ${serverPlayer.ready ? '✅' : '⏸️'} ${isMe ? '(ME)' : ''}`);
             }
             
-            // Always update from server (server is source of truth)
             Object.assign(gameState.players[playerId], serverPlayer);
             Utils.logInfo(`  ↻ Updated: ${serverPlayer.name} - Ready: ${serverPlayer.ready ? '✅' : '⏸️'}`);
           } else {
-            // Add new player
             gameState.players[playerId] = serverPlayer;
             Utils.logInfo(`  + Added: ${serverPlayer.name} - Ready: ${serverPlayer.ready ? '✅' : '⏸️'}`);
           }
         });
         
-        // Update UI with synced data
         uiManager.updatePlayerList();
         
-        // Update my ready button to match server state
         const myPlayer = gameState.players[gameState.myPlayerId];
         if (myPlayer) {
           Utils.logInfo(`🔘 Syncing my ready button to server state: ${myPlayer.ready}`);
@@ -779,7 +670,6 @@ class WSClient {
         return;
       }
       
-      // CASO 2: Jogo já começou - atualização normal
       if (gameState.gameStarted) {
         Utils.logInfo("🎮 CASE 2: In-game update");
         
@@ -792,7 +682,6 @@ class WSClient {
           Utils.logInfo("💎 Updating treasures...");
           gameState.setTreasures(payload.treasures);
 
-          // Re-render treasures (some may have been collected)
           setTimeout(() => {
             Utils.logInfo("🎨 Rendering treasures from game_update...");
             mazeRenderer.renderTreasures();
@@ -803,16 +692,15 @@ class WSClient {
           gameState.updatePlayers(payload.players);
           uiManager.updatePlayerList();
 
-          // Update player entities positions
           setTimeout(() => {
             Utils.logInfo("🎨 Updating player positions from game_update...");
             playerManager.updatePlayerEntities();
           }, 100);
 
-          // Update other players' positions
           Object.keys(payload.players).forEach((playerId) => {
             if (playerId !== gameState.myPlayerId) {
-              playerManager.updatePlayerEntity(playerId);
+              const colorIdx = playerManager.getPlayerColorIndex(playerId);
+              playerManager.updatePlayerEntity(playerId, colorIdx);
             }
           });
           
@@ -823,7 +711,6 @@ class WSClient {
         return;
       }
       
-      // CASO 3: Fallback - salvar dados mas não fazer nada
       Utils.logInfo("📌 CASE 3: Storing data (fallback)");
       
       if (payload.maze) {
@@ -841,21 +728,16 @@ class WSClient {
       }
     });
 
-
-    // Event: treasure_collected
-    // Quando um tesouro é coletado
     this.on("treasure_collected", (data) => {
       Utils.logInfo("💎 Treasure collected event received:", data);
       
       const payload = data.payload || data;
       
-      // Delegate to treasureManager
       if (window.treasureManager) {
         treasureManager.handleTreasureCollected(payload);
       } else {
         Utils.logError("❌ treasureManager not available!");
         
-        // Fallback (old logic)
         const treasureId = payload.treasureId;
         const playerId = payload.playerId;
         
@@ -864,13 +746,11 @@ class WSClient {
           treasure.collected = true;
           treasure.collectedBy = playerId;
           
-          // Remove from scene
           const treasureEl = document.getElementById(treasureId);
           if (treasureEl && treasureEl.parentNode) {
             treasureEl.parentNode.removeChild(treasureEl);
           }
           
-          // Update count
           if (playerId === gameState.myPlayerId) {
             gameState.myTreasureCount++;
             const el = document.getElementById('treasureCount');
@@ -879,13 +759,11 @@ class WSClient {
             }
           }
           
-          // Update player
           if (gameState.players[playerId]) {
             const newCount = payload.treasures !== undefined ? payload.treasures : (gameState.players[playerId].treasures || 0) + 1;
             gameState.players[playerId].treasures = newCount;
           }
           
-          // Update leaderboard
           if (window.uiManager && window.uiManager.updateLeaderboard) {
             uiManager.updateLeaderboard();
           }
@@ -893,8 +771,6 @@ class WSClient {
       }
     });
 
-    // Event: game_won
-    // Quando um jogador vence o jogo
     this.on("game_won", (data) => {
       Utils.logInfo("🏆 Game won!", data);
       
@@ -907,17 +783,6 @@ class WSClient {
       gameController.handleGameWon(data);
     });
 
-    // Event: move (echo do servidor confirmando movimento)
-    this.on("move", (data) => {
-      Utils.logDebug("📍 Move confirmation from server:", data);
-      // Normalmente não precisa fazer nada aqui, pois já movemos localmente
-      // Mas podemos usar para sincronizar se necessário
-    });
-
-    // ===== ERROR HANDLING =====
-    
-    // Event: error
-    // Quando há um erro genérico do servidor
     this.on("error", (data) => {
       Utils.logError("❌ Server error:", data);
       
@@ -928,14 +793,10 @@ class WSClient {
       alert("Erro: " + message);
     });
     
-    // Catch-all for unhandled messages
     this.on("message", (data) => {
       Utils.logWarn("⚠️ Unhandled message received:", data);
     });
 
-    // ===== EXPOSE GLOBALLY =====
-    
-    // Expose socket globally
     window.socket = this;
     gameController.setSocket(this);
     
@@ -943,5 +804,4 @@ class WSClient {
   }
 }
 
-// Expose globally
 window.WSClient = WSClient;

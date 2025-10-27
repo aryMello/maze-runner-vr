@@ -146,9 +146,7 @@ class GameController {
     this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ);
 
     // Broadcast to server with EXACT position
-    const sent = this.socket.emit("player_update", {
-      playerId: gameState.myPlayerId,
-      roomCode: gameState.room,
+    const sent = this.socket.emit("move", {
       x: newX,
       z: newZ,
       direction: directionAngle,
