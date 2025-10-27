@@ -9,7 +9,7 @@
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
-    
+
     <!-- Custom styles and scripts - Order matters! -->
     <link rel="stylesheet" href="./css/style.css" />
     <!-- 1. Configuration -->
@@ -56,7 +56,9 @@
         <!-- Room Selection Screen -->
         <div id="lobbyScreen" style="display: none">
           <p class="subtitle">Escolha uma opção:</p>
-          <button id="showRoomsBtn" class="primary-btn">Ver Salas Disponíveis</button>
+          <button id="showRoomsBtn" class="primary-btn">
+            Ver Salas Disponíveis
+          </button>
           <button id="createBtn" class="primary-btn">Criar Nova Sala</button>
         </div>
 
@@ -64,21 +66,27 @@
         <div id="roomsListScreen" style="display: none">
           <h2>Salas Disponíveis</h2>
           <p class="subtitle">Selecione uma sala para entrar</p>
-          
+
           <div id="roomsListContainer">
             <div id="loadingRooms" class="loading-message">
               Carregando salas...
             </div>
-            <div id="noRoomsMessage" class="no-rooms-message" style="display: none">
+            <div
+              id="noRoomsMessage"
+              class="no-rooms-message"
+              style="display: none"
+            >
               Nenhuma sala disponível no momento.
-              <br><br>
+              <br /><br />
               Crie uma nova sala!
             </div>
             <div id="roomsList" class="rooms-list"></div>
           </div>
-          
+
           <div class="rooms-actions">
-            <button id="refreshRoomsBtn" class="secondary-btn">🔄 Atualizar</button>
+            <button id="refreshRoomsBtn" class="secondary-btn">
+              🔄 Atualizar
+            </button>
             <button id="backToLobbyBtn" class="secondary-btn">← Voltar</button>
           </div>
         </div>
@@ -114,7 +122,11 @@
     <!-- Controls Info -->
     <div id="controls-info">
       <strong>Controles:</strong> W/↑ = Norte | S/↓ = Sul | A/← = Oeste | D/→ =
-      Leste
+      Leste<br />
+      <small
+        >💡 Clique na tela para ativar o controle de mouse da câmera | ESC para
+        sair</small
+      >
     </div>
 
     <!-- A-Frame Scene -->
@@ -162,10 +174,10 @@
       </a-assets>
 
       <!-- Camera and controls -->
-      <a-entity id="rig" position="0 1 0"> 
+      <a-entity id="rig" position="0 1 0">
         <a-camera
           id="player-camera"
-          look-controls
+          look-controls="pointerLockEnabled: true; reverseMouseDrag: false"
           wasd-controls="acceleration: 30"
         >
           <!-- Cursor for VR interaction -->
@@ -174,7 +186,8 @@
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
             material="color: #40E0D0; shader: flat; transparent: true; opacity: 0.9"
-            raycaster="objects: .clickable, .treasure; far: 25; interval: 100"          >
+            raycaster="objects: .clickable, .treasure; far: 25; interval: 100"
+          >
           </a-entity>
         </a-camera>
       </a-entity>
