@@ -108,19 +108,19 @@ class GameController {
     // CRITICAL: Use exact decimal addition/subtraction
     switch (direction) {
       case "north":
-        newZ = Math.round((oldZ - 0.1) * 10) / 10;
+        newZ = Math.round((oldZ - 0.5) * 10) / 10;
         directionAngle = 0;
         break;
       case "south":
-        newZ = Math.round((oldZ + 0.1) * 10) / 10;
+        newZ = Math.round((oldZ + 0.5) * 10) / 10;
         directionAngle = 180;
         break;
       case "west":
-        newX = Math.round((oldX - 0.1) * 10) / 10;
+        newX = Math.round((oldX - 0.5) * 10) / 10;
         directionAngle = 270;
         break;
       case "east":
-        newX = Math.round((oldX + 0.1) * 10) / 10;
+        newX = Math.round((oldX + 0.5) * 10) / 10;
         directionAngle = 90;
         break;
     }

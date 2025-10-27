@@ -488,7 +488,7 @@ class WSClient {
 
     // FIXED: Event "move" - Real-time position sync
     // This is THE CRITICAL handler for live position updates!
-    this.on("move", (data) => {
+    this.on("player_update", (data) => {
       Utils.logInfo("🚶 Move event received from server");
       
       const payload = data.payload || data;
