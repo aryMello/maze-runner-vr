@@ -771,7 +771,7 @@ class WSClient {
       }
     });
 
-    this.on("game_won", (data) => {
+    this.on("game_win", (data) => {
       Utils.logInfo("🏆 Game won!", data);
       
       const payload = data.payload || data;
