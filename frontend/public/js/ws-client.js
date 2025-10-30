@@ -486,22 +486,21 @@ class WSClient {
       this.trigger("ready", data);
     });
 
-    // FIXED: Event "move" - Real-time position sync
-    // This is THE CRITICAL handler for live position updates!
+    // FIXED: Event "player_update" - Real-time position AND rotation sync
     this.on("player_update", (data) => {
-      Utils.logInfo("🚶 Move event received from server");
+      Utils.logInfo("🚶 Player update event received from server");
       
       const payload = data.payload || data;
       const playerId = payload.playerId || payload.id;
       
       if (!playerId) {
-        Utils.logWarn("⚠️ Move event without playerId:", payload);
+        Utils.logWarn("⚠️ Player update event without playerId:", payload);
         return;
       }
       
       // Skip my own updates (already handled locally)
       if (playerId === gameState.myPlayerId) {
-        Utils.logDebug("⏭️ Skipping my own move update");
+        Utils.logDebug("⏭️ Skipping my own player update");
         return;
       }
       
@@ -514,10 +513,11 @@ class WSClient {
       
       const player = gameState.players[playerId];
       const playerName = player.name || playerId;
-      const oldPos = {x: player.x, z: player.z, dir: player.direction};
+      const oldPos = {x: player.x, z: player.z, rotation: player.rotation};
       
-      // Update position IMMEDIATELY
+      // Update position AND rotation IMMEDIATELY
       let positionChanged = false;
+      let rotationChanged = false;
       
       if (payload.x !== undefined && payload.x !== player.x) {
         player.x = payload.x;
@@ -527,12 +527,23 @@ class WSClient {
         player.z = payload.z;
         positionChanged = true;
       }
-      if (payload.direction !== undefined && payload.direction !== player.direction) {
-        player.direction = payload.direction;
+      if (payload.direction !== undefined) {
+        // Direction from server is the camera rotation (where player is looking)
+        const newRotation = payload.direction;
+        if (newRotation !== player.rotation) {
+          player.rotation = newRotation;
+          player.direction = newRotation; // Also update direction for compatibility
+          rotationChanged = true;
+        }
       }
       
-      if (positionChanged) {
-        Utils.logInfo(`🚶 ${playerName} moved: (${oldPos.x.toFixed(1)}, ${oldPos.z.toFixed(1)}) → (${player.x.toFixed(1)}, ${player.z.toFixed(1)}) [dir: ${payload.direction}°]`);
+      if (positionChanged || rotationChanged) {
+        if (positionChanged) {
+          Utils.logInfo(`🚶 ${playerName} moved: (${oldPos.x.toFixed(1)}, ${oldPos.z.toFixed(1)}) → (${player.x.toFixed(1)}, ${player.z.toFixed(1)})`);
+        }
+        if (rotationChanged) {
+          Utils.logInfo(`🔄 ${playerName} rotated: ${oldPos.rotation?.toFixed(0) || 'N/A'}° → ${player.rotation.toFixed(0)}°`);
+        }
         
         // Update 3D entity IMMEDIATELY
         if (gameState.gameStarted) {
@@ -609,7 +620,7 @@ class WSClient {
       if (payload.players) {
         Utils.logInfo("👥 Players in game_update:");
         Object.values(payload.players).forEach(p => {
-          Utils.logInfo(`  - ${p.name} (${p.id}) - Ready: ${p.ready ? '✅' : '⏸️'}`);
+          Utils.logInfo(`  - ${p.name} (${p.id}) - Ready: ${p.ready ? '✅' : '⏸️'} - Rotation: ${p.rotation?.toFixed(0) || p.direction?.toFixed(0) || 'N/A'}°`);
         });
       }
       

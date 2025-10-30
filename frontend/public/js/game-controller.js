@@ -89,7 +89,7 @@ class GameController {
     return false;
   }
 
-  // Player movement with smooth interpolation
+  // Player movement with camera-based direction (Minecraft style)
   movePlayer(direction) {
     if (!gameState.gameStarted) return;
 
@@ -100,33 +100,46 @@ class GameController {
     const oldX = player.x;
     const oldZ = player.z;
     
-    // Calculate new position with EXACT 0.3 steps
-    let newX = oldX;
-    let newZ = oldZ;
-    let directionAngle = player.direction || 0;
-
-    // CRITICAL: Use exact decimal addition/subtraction
+    // Get camera rotation (Y-axis only for horizontal movement)
+    const cameraRotation = this.camera.getAttribute('rotation');
+    const cameraYaw = cameraRotation.y; // Horizontal rotation in degrees
+    
+    // Calculate movement vector based on camera direction and input
+    let moveAngle = 0;
+    
     switch (direction) {
-      case "north":
-        newZ = Math.round((oldZ - 0.3) * 10) / 10;
-        directionAngle = 0;
+      case "north": // W - Forward relative to camera
+        moveAngle = cameraYaw;
         break;
-      case "south":
-        newZ = Math.round((oldZ + 0.3) * 10) / 10;
-        directionAngle = 180;
+      case "south": // S - Backward relative to camera
+        moveAngle = cameraYaw + 180;
         break;
-      case "west":
-        newX = Math.round((oldX - 0.3) * 10) / 10;
-        directionAngle = 270;
+      case "west": // A - Left relative to camera
+        moveAngle = cameraYaw - 90;
         break;
-      case "east":
-        newX = Math.round((oldX + 0.3) * 10) / 10;
-        directionAngle = 90;
+      case "east": // D - Right relative to camera
+        moveAngle = cameraYaw + 90;
         break;
     }
+    
+    // Normalize angle to 0-360 range
+    moveAngle = ((moveAngle % 360) + 360) % 360;
+    
+    // Convert angle to radians for trigonometry
+    const moveRad = (moveAngle * Math.PI) / 180;
+    
+    // Calculate movement delta using trigonometry
+    // Note: In A-Frame/Three.js, -Z is forward, +Z is backward
+    const deltaX = Math.sin(moveRad) * CONFIG.MOVE_SPEED;
+    const deltaZ = -Math.cos(moveRad) * CONFIG.MOVE_SPEED;
+    
+    // Calculate new position with exact decimal rounding
+    const newX = Math.round((oldX + deltaX) * 10) / 10;
+    const newZ = Math.round((oldZ + deltaZ) * 10) / 10;
 
     // Debug log BEFORE collision check
-    Utils.logDebug(`🎯 Attempting move ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+    Utils.logDebug(`🎯 Camera-based move ${direction}: camera yaw=${cameraYaw.toFixed(1)}°, move angle=${moveAngle.toFixed(1)}°`);
+    Utils.logDebug(`   Delta: (${deltaX.toFixed(2)}, ${deltaZ.toFixed(2)}) → New pos: (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
 
     // CRITICAL: Check wall collision BEFORE moving
     if (this.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
@@ -138,22 +151,31 @@ class GameController {
     // Update local state FIRST (optimistic update)
     player.x = newX;
     player.z = newZ;
-    player.direction = directionAngle;
     
-    Utils.logInfo(`🚶 Moving ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)}) dir=${directionAngle}°`);
+    // IMPORTANT: Store the OPPOSITE of camera yaw for player model rotation
+    // Because when camera looks at 0° (north), player should face 180° (south) to look AT camera
+    const playerModelRotation = (cameraYaw + 180) % 360;
+    
+    // Store camera yaw as rotation (this is what we send to server - where WE are looking)
+    player.rotation = cameraYaw;
+    // Store movement angle as direction (for movement logic)
+    player.direction = moveAngle;
+    
+    Utils.logInfo(`🚶 Moving ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)}) cameraYaw=${cameraYaw.toFixed(0)}° playerModel=${playerModelRotation.toFixed(0)}°`);
 
     // Move camera with smooth animation (POSITION ONLY - NO ROTATION)
     this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ);
 
-    // Broadcast to server with EXACT position
+    // Broadcast to server with EXACT position AND camera rotation
+    // Send camera yaw as direction so others see where we're looking
     const sent = this.socket.emit("move", {
       x: newX,
       z: newZ,
-      direction: directionAngle,
+      direction: cameraYaw, // Send camera rotation as direction
     });
 
     if (sent) {
-      Utils.logDebug(`✅ Broadcasted position: (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+      Utils.logDebug(`✅ Broadcasted position: (${newX.toFixed(1)}, ${newZ.toFixed(1)}) with camera rotation: ${cameraYaw.toFixed(0)}°`);
       
       // Update 3D entity locally
       const playerArray = Object.keys(gameState.players);
@@ -386,6 +408,10 @@ class GameController {
     uiManager.updateLeaderboard();
     playerManager.initSounds();
 
+    // START: Sync player rotation with camera (Minecraft-style)
+    playerManager.startCameraRotationSync();
+    Utils.logInfo("🔄 Camera rotation sync enabled - player head will follow camera");
+
     const totalTreasures = gameState.treasures.length;
     if (uiManager.elements.treasureCount) {
       uiManager.elements.treasureCount.textContent = `0/${totalTreasures}`;
@@ -397,7 +423,7 @@ class GameController {
     this.startGameLoop();
     this.startTimer();
     
-    Utils.logInfo("✅ Game controller initialized with free camera look");
+    Utils.logInfo("✅ Game controller initialized with free camera look and player rotation sync");
   }
 
   // Initialize gaze collection system
@@ -638,12 +664,26 @@ class GameController {
     
     const payload = data.payload || data;
     const winnerId = payload.playerId || payload.winnerId;
-    const winnerName = payload.playerName || gameState.players[winnerId]?.name || "Desconhecido";
+    const winnerName = payload.playerName || payload.winnerName || gameState.players[winnerId]?.name || "Desconhecido";
     
     // Stop the game
     gameState.gameStarted = false;
     
+    // Stop camera rotation sync
+    if (playerManager && playerManager.stopCameraRotationSync) {
+      playerManager.stopCameraRotationSync();
+    }
+    
     playerManager.playWinSound();
+
+    // Calculate elapsed time
+    let timeStr = "N/A";
+    if (gameState.startTime) {
+      const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
+      const minutes = Math.floor(elapsed / 60);
+      const seconds = elapsed % 60;
+      timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    }
 
     const message = winnerId === gameState.myPlayerId
       ? "🎉 Você venceu! 🎉"
@@ -664,9 +704,8 @@ class GameController {
     `;
     winModal.innerHTML = `
       <h1 style="color: white; font-size: 3em; margin: 0;">${message}</h1>
-      <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${
-        payload.time || "N/A"
-      }</p>
+      <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${timeStr}</p>
+      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Tesouros: ${payload.treasures || 0}</p>
       <button onclick="location.reload()" style="
         padding: 15px 40px;
         font-size: 1.2em;
@@ -676,9 +715,12 @@ class GameController {
         border-radius: 10px;
         cursor: pointer;
         font-weight: bold;
+        margin-top: 20px;
       ">Jogar Novamente</button>
     `;
     document.body.appendChild(winModal);
+    
+    Utils.logInfo("✅ Victory screen displayed");
   }
 }
 

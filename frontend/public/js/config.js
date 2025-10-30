@@ -7,15 +7,16 @@ const CONFIG = {
   
   // Game Configuration
   CELL_SIZE: 4,
-  MOVE_SPEED: 0.1, // Reduced for smoother movement
+  MOVE_SPEED: 0.3, // Movement step size in grid units
   COLLECT_RADIUS: 1.5,
   
   // Camera Configuration
   CAMERA_HEIGHT: 1.6, // Eye level on player's head
   CAMERA_SMOOTH_TIME: 150, // ms for smooth camera movement
+  CAMERA_BASED_MOVEMENT: true, // Use camera direction for WASD (Minecraft style)
   
   // Sound Configuration
-  FOOTSTEP_INTERVAL: 200, // ms - faster for 0.1 steps
+  FOOTSTEP_INTERVAL: 200, // ms
   
   // Animation Configuration
   COUNTDOWN_START: 3,
@@ -33,6 +34,5 @@ const CONFIG = {
     "#85C1E2",
   ],
 };
-
 // Expose globally
 window.CONFIG = CONFIG;
