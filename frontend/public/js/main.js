@@ -1,104 +1,239 @@
-// Main Game Entry Point
-// This file orchestrates all game modules and initializes the application
-// Event handling is done in ws-client.js
+// ========================================
+// MAIN APPLICATION (Refactored)
+// Entry point - orchestrates initialization
+// ========================================
 
-// Global socket reference
+// Global instances
 let socket = null;
-let availableRooms = [];
+let coordinateUtils = null;
+let collisionUtils = null;
+let mazeManager = null;
+let playerManager = null;
 
-// Initialize socket connection
+// ========================================
+// INITIALIZATION
+// ========================================
+
+/**
+ * Initialize all game systems
+ */
+function initializeGame() {
+  Utils.logInfo("🚀 Initializing Maze Runner VR...");
+  
+  // 1. Initialize utilities
+  coordinateUtils = new CoordinateUtils(gameState);
+  collisionUtils = new CollisionUtils(gameState);
+  
+  // 2. Initialize managers
+  mazeManager = new MazeManager(gameState, coordinateUtils);
+  playerManager = new PlayerManager(gameState, coordinateUtils);
+  
+  // 3. Initialize UI
+  uiManager.init();
+  
+  // 4. Connect to server
+  initSocket();
+  
+  // 5. Setup UI handlers
+  setupUIHandlers();
+  
+  // 6. Setup A-Frame
+  setupAFrameScene();
+  
+  Utils.logInfo("✅ Application initialized");
+}
+
+/**
+ * Initialize WebSocket connection
+ */
 function initSocket() {
-  Utils.logInfo("Initializing WebSocket connection...");
-  Utils.logInfo(`Mode: ${CONFIG.IS_LOCAL ? "LOCAL" : "REMOTE"}`);
-  Utils.logInfo(`Server: ${CONFIG.SERVER_URL}`);
-
+  Utils.logInfo(`🔌 Connecting to server: ${CONFIG.SERVER_URL}`);
+  
   const client = new WSClient(
     CONFIG.SERVER_URL,
     CONFIG.WS_PATH,
     CONFIG.IS_LOCAL
   );
-
-  client
-    .connect()
+  
+  client.connect()
     .then((s) => {
-      Utils.logInfo("Connected via WSClient", s && s.id);
+      Utils.logInfo("✅ Connected to server");
       socket = s;
+      
+      // Setup event handlers
+      const handlers = new WSHandlers(socket);
+      handlers.registerAll();
+      
+      // Set socket in game controller
+      gameController.setSocket(socket);
     })
     .catch((err) => {
-      Utils.logError("WSClient failed to connect:", err && err.message);
+      Utils.logError("❌ Failed to connect:", err);
       uiManager.updateConnectionStatus("disconnected");
     });
 }
 
-// Request list of available rooms
-async function requestRoomsList() {
-  Utils.logInfo("📋 Requesting rooms list from server...");
+/**
+ * Setup A-Frame scene
+ */
+function setupAFrameScene() {
+  const scene = document.querySelector("a-scene");
   
-  // Show loading state
-  showRoomsLoading();
+  if (!scene) {
+    Utils.logError("❌ A-Frame scene not found");
+    return;
+  }
   
-  try {
-    // Convert WebSocket URL to HTTP URL
-    const httpUrl = CONFIG.SERVER_URL.replace('wss://', 'https://').replace('ws://', 'http://');
-    const apiUrl = `${httpUrl}/api/rooms/`;
-    Utils.logInfo("🌐 Fetching from:", apiUrl);
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  if (scene.hasLoaded) {
+    Utils.logInfo("✅ A-Frame scene loaded");
+  } else {
+    scene.addEventListener("loaded", () => {
+      Utils.logInfo("✅ A-Frame scene loaded");
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    Utils.logInfo("✅ Received rooms data:", data);
-    
-    const rooms = Array.isArray(data) ? data : (data.rooms || []);
-    Utils.logInfo(`📊 Found ${rooms.length} rooms`);
-    displayRoomsList(rooms);
-    
-  } catch (error) {
-    Utils.logError("❌ Failed to fetch rooms list:", error);
-    
-    const loadingDiv = document.getElementById("loadingRooms");
-    const noRoomsDiv = document.getElementById("noRoomsMessage");
-    const roomsList = document.getElementById("roomsList");
-    
-    if (loadingDiv) loadingDiv.style.display = "none";
-    if (roomsList) roomsList.innerHTML = "";
-    
-    if (noRoomsDiv) {
-      noRoomsDiv.innerHTML = `
-        <strong>Erro ao carregar salas</strong>
-        <br><br>
-        ${error.message}
-        <br><br>
-        Tente atualizar ou criar uma nova sala.
-      `;
-      noRoomsDiv.style.display = "block";
-    }
   }
 }
 
-// Show loading state in rooms list
-function showRoomsLoading() {
-  const loadingDiv = document.getElementById("loadingRooms");
-  const noRoomsDiv = document.getElementById("noRoomsMessage");
-  const roomsList = document.getElementById("roomsList");
+// ========================================
+// UI HANDLERS
+// ========================================
+
+/**
+ * Setup all UI event handlers
+ */
+function setupUIHandlers() {
+  Utils.logInfo("🎮 Setting up UI handlers...");
   
-  if (loadingDiv) loadingDiv.style.display = "block";
-  if (noRoomsDiv) noRoomsDiv.style.display = "none";
-  if (roomsList) roomsList.innerHTML = "";
+  setupNameScreen();
+  setupLobbyScreen();
+  setupRoomsScreen();
+  setupWaitingRoom();
+  
+  Utils.logInfo("✅ UI handlers configured");
 }
 
-// Display list of rooms
-function displayRoomsList(rooms) {
-  Utils.logInfo("📋 Displaying rooms list:", rooms);
+/**
+ * Name screen handlers
+ */
+function setupNameScreen() {
+  const continueBtn = document.getElementById("continueBtn");
+  const nameInput = document.getElementById("playerNameInput");
   
+  if (continueBtn && nameInput) {
+    continueBtn.addEventListener("click", () => {
+      const name = nameInput.value.trim();
+      
+      if (!name) {
+        alert("Por favor, insira seu nome");
+        return;
+      }
+      
+      gameState.setPlayerName(name);
+      uiManager.showLobbyScreen();
+    });
+  }
+}
+
+/**
+ * Lobby screen handlers
+ */
+function setupLobbyScreen() {
+  const showRoomsBtn = document.getElementById("showRoomsBtn");
+  const createBtn = document.getElementById("createBtn");
+  
+  if (showRoomsBtn) {
+    showRoomsBtn.addEventListener("click", () => {
+      document.getElementById("lobbyScreen").style.display = "none";
+      document.getElementById("roomsListScreen").style.display = "block";
+      requestRoomsList();
+    });
+  }
+  
+  if (createBtn) {
+    createBtn.addEventListener("click", createRoom);
+  }
+}
+
+/**
+ * Rooms screen handlers
+ */
+function setupRoomsScreen() {
+  const refreshBtn = document.getElementById("refreshRoomsBtn");
+  const backBtn = document.getElementById("backToLobbyBtn");
+  
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", requestRoomsList);
+  }
+  
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      document.getElementById("roomsListScreen").style.display = "none";
+      document.getElementById("lobbyScreen").style.display = "block";
+    });
+  }
+}
+
+/**
+ * Waiting room handlers
+ */
+function setupWaitingRoom() {
+  const readyBtn = document.getElementById("readyBtn");
+  const leaveBtn = document.getElementById("leaveBtn");
+  
+  if (readyBtn) {
+    readyBtn.addEventListener("click", toggleReady);
+  }
+  
+  if (leaveBtn) {
+    leaveBtn.addEventListener("click", () => {
+      if (socket && gameState.myPlayerId && gameState.room) {
+        socket.emit("leave_room", {
+          playerId: gameState.myPlayerId,
+          roomCode: gameState.room,
+        });
+      }
+      location.reload();
+    });
+  }
+}
+
+// ========================================
+// ROOM MANAGEMENT
+// ========================================
+
+/**
+ * Request list of available rooms
+ */
+async function requestRoomsList() {
+  Utils.logInfo("📋 Requesting rooms list...");
+  
+  showRoomsLoading();
+  
+  try {
+    const httpUrl = CONFIG.SERVER_URL
+      .replace('wss://', 'https://')
+      .replace('ws://', 'http://');
+    const apiUrl = `${httpUrl}/api/rooms/`;
+    
+    const response = await fetch(apiUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const data = await response.json();
+    const rooms = Array.isArray(data) ? data : (data.rooms || []);
+    
+    Utils.logInfo(`✅ Found ${rooms.length} rooms`);
+    displayRoomsList(rooms);
+    
+  } catch (error) {
+    Utils.logError("❌ Failed to fetch rooms:", error);
+    showRoomsError(error.message);
+  }
+}
+
+/**
+ * Display rooms list
+ * @param {array} rooms
+ */
+function displayRoomsList(rooms) {
   const loadingDiv = document.getElementById("loadingRooms");
   const noRoomsDiv = document.getElementById("noRoomsMessage");
   const roomsList = document.getElementById("roomsList");
@@ -106,7 +241,6 @@ function displayRoomsList(rooms) {
   if (loadingDiv) loadingDiv.style.display = "none";
   
   if (!rooms || rooms.length === 0) {
-    Utils.logInfo("ℹ️ No rooms available");
     if (noRoomsDiv) {
       noRoomsDiv.innerHTML = `
         Nenhuma sala disponível no momento.
@@ -120,356 +254,174 @@ function displayRoomsList(rooms) {
   }
   
   if (noRoomsDiv) noRoomsDiv.style.display = "none";
-  availableRooms = rooms;
   
-  let roomsHTML = "";
-  
+  let html = "";
   rooms.forEach(room => {
-    const code = room.code || room.Code || room.roomCode;
-    const playerCount = room.playerCount || room.PlayerCount || (room.players ? Object.keys(room.players).length : 0);
+    const code = room.code || room.Code;
+    const playerCount = room.playerCount || room.PlayerCount || 0;
     const maxPlayers = room.maxPlayers || room.MaxPlayers || 4;
     const gameStarted = room.gameStarted || room.GameStarted || false;
     
-    const isFull = playerCount >= maxPlayers;
-    const isStarted = gameStarted;
-    const canJoin = !isFull && !isStarted;
+    const canJoin = !gameStarted && playerCount < maxPlayers;
+    const statusClass = gameStarted ? "started" : (playerCount >= maxPlayers ? "full" : "waiting");
+    const statusText = gameStarted ? "Em jogo" : (playerCount >= maxPlayers ? "Cheia" : "Aguardando");
     
-    let statusClass = "waiting";
-    let statusText = "Aguardando";
-    
-    if (isStarted) {
-      statusClass = "started";
-      statusText = "Em jogo";
-    } else if (isFull) {
-      statusClass = "full";
-      statusText = "Cheia";
-    }
-    
-    const cardClass = `room-card ${isFull ? 'full' : ''} ${isStarted ? 'started' : ''}`;
-    const playersClass = `room-players ${isFull ? 'full' : ''}`;
-    
-    roomsHTML += `
-      <div class="${cardClass}" data-room-code="${code}" ${canJoin ? 'onclick="joinRoomFromList(this)"' : ''}>
+    html += `
+      <div class="room-card ${canJoin ? '' : 'disabled'}" 
+           data-room-code="${code}" 
+           ${canJoin ? 'onclick="joinRoomFromList(this)"' : ''}>
         <div class="room-info">
-          <div class="room-code-display">${code ? code.toUpperCase() : 'N/A'}</div>
-          <div class="room-details">
-            <div class="room-detail">
-              <span class="room-detail-icon">🎮</span>
-              <span>${playerCount}/${maxPlayers} jogadores</span>
-            </div>
-          </div>
+          <div class="room-code-display">${code.toUpperCase()}</div>
+          <div class="room-players">${playerCount}/${maxPlayers}</div>
         </div>
-        <div class="room-status">
-          <div class="${playersClass}">
-            ${playerCount}/${maxPlayers}
-          </div>
-          <div class="room-badge ${statusClass}">
-            ${statusText}
-          </div>
-        </div>
+        <div class="room-badge ${statusClass}">${statusText}</div>
       </div>
     `;
   });
   
-  if (roomsList) {
-    roomsList.innerHTML = roomsHTML;
-  }
-  
-  Utils.logInfo(`✅ Displayed ${rooms.length} rooms`);
+  if (roomsList) roomsList.innerHTML = html;
 }
 
-// Join room from list (called when clicking a room card)
+/**
+ * Show rooms loading state
+ */
+function showRoomsLoading() {
+  const loadingDiv = document.getElementById("loadingRooms");
+  const noRoomsDiv = document.getElementById("noRoomsMessage");
+  const roomsList = document.getElementById("roomsList");
+  
+  if (loadingDiv) loadingDiv.style.display = "block";
+  if (noRoomsDiv) noRoomsDiv.style.display = "none";
+  if (roomsList) roomsList.innerHTML = "";
+}
+
+/**
+ * Show rooms error
+ * @param {string} message
+ */
+function showRoomsError(message) {
+  const loadingDiv = document.getElementById("loadingRooms");
+  const noRoomsDiv = document.getElementById("noRoomsMessage");
+  const roomsList = document.getElementById("roomsList");
+  
+  if (loadingDiv) loadingDiv.style.display = "none";
+  if (roomsList) roomsList.innerHTML = "";
+  
+  if (noRoomsDiv) {
+    noRoomsDiv.innerHTML = `
+      <strong>Erro ao carregar salas</strong>
+      <br><br>
+      ${message}
+      <br><br>
+      Tente atualizar ou criar uma nova sala.
+    `;
+    noRoomsDiv.style.display = "block";
+  }
+}
+
+/**
+ * Create new room
+ */
+function createRoom() {
+  if (!gameState.myPlayerName) {
+    alert("Erro: Nome não definido");
+    return;
+  }
+  
+  if (!socket || !socket.isConnected()) {
+    alert("Não conectado ao servidor");
+    return;
+  }
+  
+  const playerId = "host-" + Math.random().toString(36).substr(2, 9);
+  gameState.setPlayerId(playerId);
+  
+  socket.emit("create_room", {
+    playerId: playerId,
+    name: gameState.myPlayerName,
+    maxPlayers: 4,
+  });
+}
+
+/**
+ * Join room from list
+ * @param {HTMLElement} element
+ */
 function joinRoomFromList(element) {
   const roomCode = element.getAttribute('data-room-code');
+  if (!roomCode) return;
   
-  if (!roomCode) {
-    Utils.logError("❌ No room code found on element");
-    return;
-  }
-  
-  Utils.logInfo("🚪 Joining room from list:", roomCode);
-  joinRoomByCode(roomCode);
+  joinRoom(roomCode);
 }
 
-// Join room by code
-function joinRoomByCode(roomCode) {
-  Utils.logInfo("🚪 Attempting to join room:", roomCode);
-  Utils.logInfo("👤 Player name:", gameState.myPlayerName);
-  
+/**
+ * Join room by code
+ * @param {string} roomCode
+ */
+function joinRoom(roomCode) {
   if (!gameState.myPlayerName) {
-    Utils.logError("❌ Player name not set!");
-    alert("Erro: Nome do jogador não definido. Por favor, volte e insira seu nome.");
+    alert("Erro: Nome não definido");
     return;
   }
-
+  
   if (!gameState.myPlayerId) {
     const playerId = "player-" + Math.random().toString(36).substr(2, 9);
     gameState.setPlayerId(playerId);
-    Utils.logInfo("🆔 Generated new player ID:", playerId);
-  } else {
-    Utils.logInfo("🆔 Using existing player ID:", gameState.myPlayerId);
   }
-
-  Utils.logInfo("💾 Storing room code:", roomCode);
-  gameState.pendingRoomCode = roomCode.toLowerCase();
-  gameState.setRoom(roomCode.toLowerCase());
-
-  if (socket && socket.ws) {
-    Utils.logInfo("🔌 Closing previous WebSocket connection...");
-    socket.close();
-  }
-
-  const roomPath = `/ws/${roomCode.toLowerCase()}`;
-  Utils.logInfo("🔗 Connecting to room WebSocket:", roomPath);
   
-  const roomClient = new WSClient(
-    CONFIG.SERVER_URL,
-    roomPath,
-    CONFIG.IS_LOCAL
-  );
-
+  gameState.setRoom(roomCode.toLowerCase());
+  
+  const roomPath = `/ws/${roomCode.toLowerCase()}`;
+  const roomClient = new WSClient(CONFIG.SERVER_URL, roomPath, CONFIG.IS_LOCAL);
+  
   roomClient.connect()
     .then((s) => {
-      Utils.logInfo("✅ Connected to room WebSocket:", s.id);
       socket = s;
       
-      Utils.logInfo("🙈 Hiding rooms list screen...");
-      const roomsListScreen = document.getElementById("roomsListScreen");
-      if (roomsListScreen) {
-        roomsListScreen.style.display = "none";
-      }
+      // Setup handlers
+      const handlers = new WSHandlers(socket);
+      handlers.registerAll();
+      gameController.setSocket(socket);
       
-      Utils.logInfo("📤 Sending join message:");
-      Utils.logInfo("  - Player ID:", gameState.myPlayerId);
-      Utils.logInfo("  - Player Name:", gameState.myPlayerName);
-
-      const success = socket.emit("join", {
+      // Hide rooms list
+      document.getElementById("roomsListScreen").style.display = "none";
+      
+      // Send join
+      socket.emit("join", {
         playerId: gameState.myPlayerId,
         name: gameState.myPlayerName,
       });
-      
-      if (!success) {
-        Utils.logError("❌ Failed to send join message");
-        alert("Erro ao enviar mensagem. Tente novamente.");
-        return;
-      }
-      
-      Utils.logInfo("✅ join message sent successfully");
-      Utils.logInfo("⏳ Waiting for server response...");
-      
-      if (window._joinTimeout) {
-        clearTimeout(window._joinTimeout);
-      }
-      
-      window._joinTimeout = setTimeout(() => {
-        Utils.logError("⏰ Timeout: Server did not respond to join request");
-        alert("Timeout: O servidor não respondeu.\n\nTente atualizar a lista de salas ou criar uma nova sala.");
-        delete gameState.pendingRoomCode;
-        window._joinTimeout = null;
-      }, 5000);
     })
     .catch((err) => {
-      Utils.logError("❌ Failed to connect to room WebSocket:", err);
-      alert("Não foi possível conectar à sala. Verifique o código e tente novamente.");
+      Utils.logError("❌ Failed to join room:", err);
+      alert("Não foi possível conectar à sala");
     });
 }
 
-// Setup UI event listeners
-function setupUI() {
-  Utils.logInfo("🎮 Setting up UI event listeners...");
-
-  // Continue button (name screen)
-  const continueBtn = document.getElementById("continueBtn");
-  if (continueBtn) {
-    continueBtn.addEventListener("click", () => {
-      Utils.logInfo("🔵 Continue button clicked!");
-      const nameInput = document.getElementById("playerNameInput");
-      const name = nameInput ? nameInput.value.trim() : "";
-
-      if (!name) {
-        Utils.logWarn("⚠️ No name entered");
-        alert("Por favor, insira seu nome");
-        return;
-      }
-
-      Utils.logInfo("✅ Setting player name:", name);
-      gameState.setPlayerName(name);
-
-      Utils.logInfo("🎬 Showing lobby screen...");
-      uiManager.showLobbyScreen();
-    });
+/**
+ * Toggle ready status
+ */
+function toggleReady() {
+  if (!gameState.myPlayerId || !gameState.room) {
+    alert("Erro: Dados não definidos");
+    return;
   }
-
-  // Show rooms button
-  const showRoomsBtn = document.getElementById("showRoomsBtn");
-  if (showRoomsBtn) {
-    showRoomsBtn.addEventListener("click", () => {
-      Utils.logInfo("📋 Show rooms button clicked");
-      document.getElementById("lobbyScreen").style.display = "none";
-      document.getElementById("roomsListScreen").style.display = "block";
-      requestRoomsList();
-    });
-  }
-
-  // Refresh rooms button
-  const refreshRoomsBtn = document.getElementById("refreshRoomsBtn");
-  if (refreshRoomsBtn) {
-    refreshRoomsBtn.addEventListener("click", () => {
-      Utils.logInfo("🔄 Refresh rooms button clicked");
-      requestRoomsList();
-    });
-  }
-
-  // Back to lobby button
-  const backToLobbyBtn = document.getElementById("backToLobbyBtn");
-  if (backToLobbyBtn) {
-    backToLobbyBtn.addEventListener("click", () => {
-      Utils.logInfo("← Back to lobby button clicked");
-      document.getElementById("roomsListScreen").style.display = "none";
-      document.getElementById("lobbyScreen").style.display = "block";
-    });
-  }
-
-  // Create room button
-  const createBtn = document.getElementById("createBtn");
-  if (createBtn) {
-    createBtn.addEventListener("click", () => {
-      Utils.logInfo("🏠 Create room button clicked");
-      
-      if (!gameState.myPlayerName) {
-        Utils.logError("❌ Player name not set!");
-        alert("Erro: Nome do jogador não definido. Por favor, volte e insira seu nome.");
-        return;
-      }
-      
-      if (!socket || !socket.isConnected()) {
-        Utils.logError("❌ Socket not connected");
-        alert("Não conectado ao servidor. Aguarde...");
-        return;
-      }
-
-      const playerId = "host-" + Math.random().toString(36).substr(2, 9);
-      gameState.setPlayerId(playerId);
-      
-      Utils.logInfo("🆔 Generated host ID:", playerId);
-
-      const success = socket.emit("create_room", {
-        playerId: playerId,
-        name: gameState.myPlayerName,
-        maxPlayers: 4,
-      });
-      
-      if (!success) {
-        Utils.logError("❌ Failed to send create_room message");
-        alert("Erro ao enviar mensagem. Tente novamente.");
-      } else {
-        Utils.logInfo("✅ create_room message sent successfully");
-      }
-    });
-  }
-
-  // Ready button
-  const readyBtn = document.getElementById("readyBtn");
-  if (readyBtn) {
-    readyBtn.addEventListener("click", () => {
-      Utils.logInfo("✅ Ready button clicked");
-      
-      if (!gameState.myPlayerId || !gameState.room) {
-        Utils.logError("❌ No player ID or room set!");
-        alert("Erro: Dados do jogador não definidos");
-        return;
-      }
-      
-      const isReady = gameState.toggleReady();
-      Utils.logInfo("🎯 Toggled ready status locally to:", isReady);
-      
-      uiManager.updateReadyButton(isReady);
-      uiManager.updatePlayerList();
-      
-      const sent = socket.emit("ready", {
-        ready: isReady,
-      });
-      
-      if (!sent) {
-        Utils.logError("❌ Failed to send ready status!");
-        gameState.toggleReady();
-        uiManager.updateReadyButton(!isReady);
-        uiManager.updatePlayerList();
-        alert("Erro ao enviar status. Tente novamente.");
-        return;
-      }
-      
-      Utils.logInfo("✅ Ready status sent");
-    });
-  }
-
-  // Leave button
-  const leaveBtn = document.getElementById("leaveBtn");
-  if (leaveBtn) {
-    leaveBtn.addEventListener("click", () => {
-      Utils.logInfo("👋 Leave button clicked");
-      
-      if (socket && gameState.myPlayerId && gameState.room) {
-        socket.emit("leave_room", {
-          playerId: gameState.myPlayerId,
-          roomCode: gameState.room,
-        });
-      }
-      
-      location.reload();
-    });
-  }
-
-  Utils.logInfo("✅ All UI event listeners configured");
-}
-
-// Initialize treasure collection system
-// Now delegated to treasureManager
-function initTreasureCollection() {
-  Utils.logInfo("💎 Initializing treasure collection system...");
   
-  // Initialize treasure manager
-  if (window.treasureManager) {
-    treasureManager.init();
-    Utils.logInfo("✅ Treasure collection system active");
-  } else {
-    Utils.logError("❌ treasureManager not found! Make sure treasureManager.js is loaded.");
-  }
+  const isReady = gameState.toggleReady();
+  uiManager.updateReadyButton(isReady);
+  uiManager.updatePlayerList();
+  
+  socket.emit("ready", { ready: isReady });
 }
 
-// Initialize on page load
+// ========================================
+// APPLICATION ENTRY POINT
+// ========================================
+
 window.addEventListener("load", () => {
-  Utils.logInfo("🚀 Página carregada, inicializando aplicação...");
-
-  // Initialize UI Manager
-  uiManager.init();
-
-  // Initialize socket
-  initSocket();
-
-  // Setup UI event listeners
-  setupUI();
-
-  // Setup keyboard controls
-  gameController.setupKeyboardControls();
-
-  // Initialize treasure collection
-  initTreasureCollection();
-
-  // Setup A-Frame scene listener
-  const scene = document.querySelector("a-scene");
-  if (scene) {
-    if (scene.hasLoaded) {
-      Utils.logInfo("✅ A-Frame scene loaded");
-    } else {
-      scene.addEventListener("loaded", () => {
-        Utils.logInfo("✅ A-Frame scene loaded");
-      });
-    }
-  }
-
-  Utils.logInfo("✅ Application initialization complete");
+  Utils.logInfo("🚀 Application starting...");
+  initializeGame();
 });
 
-// Expose globally for onclick handlers
+// Global exports
 window.joinRoomFromList = joinRoomFromList;

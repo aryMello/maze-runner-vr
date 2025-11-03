@@ -1,369 +1,46 @@
-// Game Controller - Handles game logic and player interactions
+// ========================================
+// GAME CONTROLLER (Refactored)
+// Orchestrates game initialization and loop
+// Delegates to specialized controllers
+// ========================================
+
 class GameController {
   constructor() {
     this.socket = null;
-    this.camera = null;
     this.scene = null;
-    this.raycaster = null;
+    this.camera = null;
     
-    // Gaze collection system
+    // Controllers
+    this.movementController = null;
+    this.inputController = null;
+    this.cameraController = null;
+    
+    // Gaze system
+    this.raycaster = null;
     this.gazeTarget = null;
     this.gazeStartTime = 0;
-    this.gazeThreshold = 1500; // 1.5 seconds
+    this.gazeThreshold = 1500;
     this.isCollecting = false;
     this.gazeProgressBar = null;
-    
-    // Keyboard state for continuous movement
-    this.keysPressed = {
-      north: false,
-      south: false,
-      west: false,
-      east: false
-    };
-    this.lastMoveTime = 0;
-    this.moveInterval = 100; // Move every 100ms when key is held
   }
 
+  // ========================================
+  // INITIALIZATION
+  // ========================================
+
+  /**
+   * Set WebSocket client
+   * @param {WSClient} socket
+   */
   setSocket(socket) {
     this.socket = socket;
   }
 
-  // Collision detection - checks if position would collide with wall
-  checkWallCollision(x, z) {
-    if (!gameState.maze || gameState.maze.length === 0) return false;
-
-    const cellSize = gameState.cellSize;
-    const mazeWidth = gameState.maze[0].length;
-    const mazeHeight = gameState.maze.length;
-    const offsetX = (mazeWidth * cellSize) / 2;
-    const offsetZ = (mazeHeight * cellSize) / 2;
-
-    // Convert world coordinates to grid coordinates
-    const worldX = x * cellSize - offsetX;
-    const worldZ = z * cellSize - offsetZ;
-    
-    // Get grid cell
-    const gridX = Math.floor((worldX + offsetX) / cellSize);
-    const gridZ = Math.floor((worldZ + offsetZ) / cellSize);
-
-    // Check bounds
-    if (
-      gridZ < 0 ||
-      gridZ >= mazeHeight ||
-      gridX < 0 ||
-      gridX >= mazeWidth
-    ) {
-      Utils.logDebug(`🚫 Out of bounds: grid(${gridX}, ${gridZ})`);
-      return true;
-    }
-
-    // Check if cell is a wall
-    const isWall = gameState.maze[gridZ][gridX] === 1;
-    
-    if (isWall) {
-      Utils.logDebug(`🧱 Wall detected at grid(${gridX}, ${gridZ})`);
-    }
-    
-    return isWall;
-  }
-  
-  // Additional collision check with player radius (for smoother collision)
-  checkWallCollisionWithRadius(x, z, radius = 0.25) {
-    // Check center point
-    if (this.checkWallCollision(x, z)) return true;
-    
-    // Check corners of player's bounding box
-    const offsets = [
-      { dx: radius, dz: radius },
-      { dx: radius, dz: -radius },
-      { dx: -radius, dz: radius },
-      { dx: -radius, dz: -radius }
-    ];
-    
-    for (const offset of offsets) {
-      if (this.checkWallCollision(x + offset.dx, z + offset.dz)) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  // Player movement with camera-based direction (Minecraft style)
-  movePlayer(direction) {
-    if (!gameState.gameStarted) return;
-
-    const player = gameState.players[gameState.myPlayerId];
-    if (!player) return;
-
-    // Store old position
-    const oldX = player.x;
-    const oldZ = player.z;
-    
-    // Get camera rotation (Y-axis only for horizontal movement)
-    const cameraRotation = this.camera.getAttribute('rotation');
-    const cameraYaw = cameraRotation.y; // Horizontal rotation in degrees
-    
-    // Calculate movement vector based on camera direction and input
-    let moveAngle = 0;
-    
-    switch (direction) {
-      case "north": // W - Forward relative to camera
-        moveAngle = cameraYaw;
-        break;
-      case "south": // S - Backward relative to camera
-        moveAngle = cameraYaw + 180;
-        break;
-      case "west": // A - Left relative to camera
-        moveAngle = cameraYaw - 90;
-        break;
-      case "east": // D - Right relative to camera
-        moveAngle = cameraYaw + 90;
-        break;
-    }
-    
-    // Normalize angle to 0-360 range
-    moveAngle = ((moveAngle % 360) + 360) % 360;
-    
-    // Convert angle to radians for trigonometry
-    const moveRad = (moveAngle * Math.PI) / 180;
-    
-    // Calculate movement delta using trigonometry
-    // Note: In A-Frame/Three.js, -Z is forward, +Z is backward
-    const deltaX = Math.sin(moveRad) * CONFIG.MOVE_SPEED;
-    const deltaZ = -Math.cos(moveRad) * CONFIG.MOVE_SPEED;
-    
-    // Calculate new position with exact decimal rounding
-    const newX = Math.round((oldX + deltaX) * 10) / 10;
-    const newZ = Math.round((oldZ + deltaZ) * 10) / 10;
-
-    // Debug log BEFORE collision check
-    Utils.logDebug(`🎯 Camera-based move ${direction}: camera yaw=${cameraYaw.toFixed(1)}°, move angle=${moveAngle.toFixed(1)}°`);
-    Utils.logDebug(`   Delta: (${deltaX.toFixed(2)}, ${deltaZ.toFixed(2)}) → New pos: (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-
-    // CRITICAL: Check wall collision BEFORE moving
-    if (this.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
-      Utils.logDebug(`🚫 BLOCKED! Wall collision at (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-      return; // Don't move!
-    }
-
-    // No collision - safe to move!
-    // Update local state FIRST (optimistic update)
-    player.x = newX;
-    player.z = newZ;
-    
-    // IMPORTANT: Store the OPPOSITE of camera yaw for player model rotation
-    // Because when camera looks at 0° (north), player should face 180° (south) to look AT camera
-    const playerModelRotation = (cameraYaw + 180) % 360;
-    
-    // Store camera yaw as rotation (this is what we send to server - where WE are looking)
-    player.rotation = cameraYaw;
-    // Store movement angle as direction (for movement logic)
-    player.direction = moveAngle;
-    
-    Utils.logInfo(`🚶 Moving ${direction}: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)}) cameraYaw=${cameraYaw.toFixed(0)}° playerModel=${playerModelRotation.toFixed(0)}°`);
-
-    // Move camera with smooth animation (POSITION ONLY - NO ROTATION)
-    this.smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ);
-
-    // Broadcast to server with EXACT position AND camera rotation
-    // Send camera yaw as direction so others see where we're looking
-    const sent = this.socket.emit("move", {
-      x: newX,
-      z: newZ,
-      direction: cameraYaw, // Send camera rotation as direction
-    });
-
-    if (sent) {
-      Utils.logDebug(`✅ Broadcasted position: (${newX.toFixed(1)}, ${newZ.toFixed(1)}) with camera rotation: ${cameraYaw.toFixed(0)}°`);
-      
-      // Update 3D entity locally
-      const playerArray = Object.keys(gameState.players);
-      const colorIdx = playerArray.indexOf(gameState.myPlayerId);
-      playerManager.updatePlayerEntity(gameState.myPlayerId, colorIdx);
-    } else {
-      Utils.logError("❌ Failed to broadcast position!");
-      // Rollback local state
-      player.x = oldX;
-      player.z = oldZ;
-    }
-
-    playerManager.playFootstep();
-  }
-
-  // Smooth camera movement WITHOUT rotation (FIXED!)
-  smoothMoveCameraToPlayer(oldX, oldZ, newX, newZ) {
-    if (!this.camera) return;
-
-    const cellSize = gameState.cellSize;
-    const mazeSize = gameState.maze ? gameState.maze.length : 25;
-    const offsetX = (mazeSize * cellSize) / 2;
-    const offsetZ = (mazeSize * cellSize) / 2;
-    
-    // Calculate world positions
-    const oldWorldX = oldX * cellSize - offsetX;
-    const oldWorldZ = oldZ * cellSize - offsetZ;
-    const newWorldX = newX * cellSize - offsetX;
-    const newWorldZ = newZ * cellSize - offsetZ;
-    
-    // Get camera rig (parent of camera)
-    const cameraRig = this.camera.parentElement;
-    const targetElement = (cameraRig && cameraRig.id === 'rig') ? cameraRig : this.camera;
-    
-    // Camera height (eye level - on top of player's head)
-    const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
-    
-    // ONLY animate position - NO rotation changes!
-    targetElement.setAttribute('animation__move', {
-      property: 'position',
-      from: `${oldWorldX} ${cameraHeight} ${oldWorldZ}`,
-      to: `${newWorldX} ${cameraHeight} ${newWorldZ}`,
-      dur: CONFIG.CAMERA_SMOOTH_TIME || 150,
-      easing: 'easeOutQuad'
-    });
-    
-    // Remove any existing rotation animation
-    targetElement.removeAttribute('animation__rotate');
-    
-    Utils.logDebug(`📹 Camera smoothly moving to (${newWorldX.toFixed(1)}, ${cameraHeight}, ${newWorldZ.toFixed(1)}) - Free look enabled`);
-  }
-
-  // Move camera to follow player (instant - used for initial positioning)
-  moveCameraToPlayer(gridX, gridZ) {
-    if (!this.camera) return;
-
-    // Calculate world position (same formula as player rendering)
-    const cellSize = gameState.cellSize;
-    const mazeSize = gameState.maze ? gameState.maze.length : 25;
-    const offsetX = (mazeSize * cellSize) / 2;
-    const offsetZ = (mazeSize * cellSize) / 2;
-    
-    const worldX = gridX * cellSize - offsetX;
-    const worldZ = gridZ * cellSize - offsetZ;
-    
-    // Camera height (eye level)
-    const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
-    
-    // Get camera rig (parent of camera)
-    const cameraRig = this.camera.parentElement;
-    if (cameraRig && cameraRig.id === 'rig') {
-      cameraRig.setAttribute('position', `${worldX} ${cameraHeight} ${worldZ}`);
-    } else {
-      // If no rig, position camera directly
-      this.camera.setAttribute('position', `${worldX} ${cameraHeight} ${worldZ}`);
-    }
-    
-    Utils.logDebug(`📹 Camera positioned at (${worldX}, ${cameraHeight}, ${worldZ})`);
-  }
-
-  // Keyboard controls with continuous movement
-  setupKeyboardControls() {
-    document.addEventListener("keydown", (e) => {
-      if (!gameState.gameStarted) return;
-      
-      let direction = null;
-      
-      switch (e.key) {
-        case "w":
-        case "W":
-        case "ArrowUp":
-          direction = "north";
-          e.preventDefault();
-          break;
-        case "s":
-        case "S":
-        case "ArrowDown":
-          direction = "south";
-          e.preventDefault();
-          break;
-        case "a":
-        case "A":
-        case "ArrowLeft":
-          direction = "west";
-          e.preventDefault();
-          break;
-        case "d":
-        case "D":
-        case "ArrowRight":
-          direction = "east";
-          e.preventDefault();
-          break;
-      }
-      
-      if (direction && !this.keysPressed[direction]) {
-        this.keysPressed[direction] = true;
-        this.movePlayer(direction); // Immediate move on key press
-      }
-    });
-    
-    document.addEventListener("keyup", (e) => {
-      if (!gameState.gameStarted) return;
-      
-      switch (e.key) {
-        case "w":
-        case "W":
-        case "ArrowUp":
-          this.keysPressed.north = false;
-          break;
-        case "s":
-        case "S":
-        case "ArrowDown":
-          this.keysPressed.south = false;
-          break;
-        case "a":
-        case "A":
-        case "ArrowLeft":
-          this.keysPressed.west = false;
-          break;
-        case "d":
-        case "D":
-        case "ArrowRight":
-          this.keysPressed.east = false;
-          break;
-      }
-    });
-    
-    // Continuous movement when key is held
-    this.startContinuousMovement();
-  }
-  
-  // Handle continuous movement when keys are held
-  startContinuousMovement() {
-    const updateMovement = () => {
-      if (!gameState.gameStarted) {
-        requestAnimationFrame(updateMovement);
-        return;
-      }
-      
-      const now = Date.now();
-      
-      // Rate limit movement
-      if (now - this.lastMoveTime >= this.moveInterval) {
-        // Check which direction is pressed (priority order)
-        if (this.keysPressed.north) {
-          this.movePlayer("north");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.south) {
-          this.movePlayer("south");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.west) {
-          this.movePlayer("west");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.east) {
-          this.movePlayer("east");
-          this.lastMoveTime = now;
-        }
-      }
-      
-      requestAnimationFrame(updateMovement);
-    };
-    
-    updateMovement();
-  }
-
-  // Initialize game
+  /**
+   * Initialize game
+   */
   initGame() {
-    Utils.logInfo("🎮 Initializing game controller...");
+    Utils.logInfo("🎮 Initializing game...");
     
     this.scene = document.querySelector("a-scene");
     this.camera = document.querySelector("[camera]");
@@ -373,64 +50,103 @@ class GameController {
       return;
     }
     
-    // CRITICAL: Disable A-Frame's built-in WASD controls (we handle movement ourselves)
-    const cameraEl = this.camera;
-    if (cameraEl.hasAttribute('wasd-controls')) {
-      cameraEl.setAttribute('wasd-controls', 'enabled: false');
-      Utils.logInfo("🚫 Disabled A-Frame WASD controls");
+    // Initialize controllers
+    this.initControllers();
+    
+    // Position camera at player start
+    const player = gameState.players[gameState.myPlayerId];
+    if (player) {
+      this.cameraController.positionAtPlayer(player.x, player.z);
+      Utils.logInfo(`📹 Camera positioned at (${player.x}, ${player.z})`);
     }
     
-    // Get camera rig
-    const cameraRig = cameraEl.parentElement;
-    if (cameraRig && cameraRig.id === 'rig') {
-      if (cameraRig.hasAttribute('wasd-controls')) {
-        cameraRig.setAttribute('wasd-controls', 'enabled: false');
-        Utils.logInfo("🚫 Disabled A-Frame WASD controls on rig");
+    // Initialize gaze system
+    this.initGazeSystem();
+    
+    // Render game world
+    this.renderWorld();
+    
+    // Start game systems
+    this.startGameLoop();
+    this.startTimer();
+    
+    Utils.logInfo("✅ Game initialized");
+  }
+
+  /**
+   * Initialize all controllers
+   */
+  initControllers() {
+    // Movement controller
+    this.movementController = new MovementController(gameState, collisionUtils);
+    this.movementController.init(this.camera, this.socket);
+    
+    // Input controller
+    this.inputController = new InputController(this.movementController);
+    this.inputController.init();
+    
+    // Camera controller
+    this.cameraController = new CameraController(gameState, coordinateUtils);
+    this.cameraController.init(this.camera);
+    
+    // Player manager camera sync
+    playerManager.init(this.camera);
+    playerManager.startCameraRotationSync();
+    
+    Utils.logInfo("✅ Controllers initialized");
+  }
+
+  /**
+   * Render game world
+   */
+  renderWorld() {
+    Utils.logInfo("🎨 Rendering game world...");
+    
+    // Render maze
+    if (gameState.maze && gameState.maze.length > 0) {
+      mazeManager.renderMaze();
+    }
+    
+    // Render treasures
+    if (gameState.treasures && gameState.treasures.length > 0) {
+      if (window.treasureManager) {
+        treasureManager.setTreasures(gameState.treasures);
+        treasureManager.renderTreasures();
+        treasureManager.startProximityCheck();
+      } else {
+        mazeManager.renderTreasures();
       }
     }
     
-    // Position camera at player's starting position
-    const player = gameState.players[gameState.myPlayerId];
-    if (player) {
-      this.moveCameraToPlayer(player.x, player.z);
-      
-      // NO initial rotation setup - let player freely look around
-      Utils.logInfo(`📹 Camera initialized at player position (${player.x}, ${player.z}) with free mouse look`);
+    // Render players
+    if (Object.keys(gameState.players).length > 0) {
+      playerManager.updatePlayerEntities();
     }
     
-    // Initialize gaze system for treasure collection
-    this.initGazeSystem();
-    
-    // Initialize existing game elements
-    mazeRenderer.renderMaze();
-    mazeRenderer.renderTreasures();
-    playerManager.updatePlayerEntities();
+    // Update UI
     uiManager.updateLeaderboard();
     playerManager.initSounds();
-
-    // START: Sync player rotation with camera (Minecraft-style)
-    playerManager.startCameraRotationSync();
-    Utils.logInfo("🔄 Camera rotation sync enabled - player head will follow camera");
-
+    
     const totalTreasures = gameState.treasures.length;
     if (uiManager.elements.treasureCount) {
       uiManager.elements.treasureCount.textContent = `0/${totalTreasures}`;
     }
-
+    
     uiManager.showCountdown();
     
-    // Start game loop
-    this.startGameLoop();
-    this.startTimer();
-    
-    Utils.logInfo("✅ Game controller initialized with free camera look and player rotation sync");
+    Utils.logInfo("✅ World rendered");
   }
 
-  // Initialize gaze collection system
+  // ========================================
+  // GAZE SYSTEM
+  // ========================================
+
+  /**
+   * Initialize gaze collection system
+   */
   initGazeSystem() {
-    Utils.logInfo("👁️ Initializing gaze collection system...");
+    Utils.logInfo("👁️ Initializing gaze system...");
     
-    // Create raycaster on camera
     if (!this.camera.components.raycaster) {
       this.camera.setAttribute("raycaster", {
         objects: ".treasure",
@@ -440,15 +156,15 @@ class GameController {
     }
     
     this.raycaster = this.camera.components.raycaster;
-    
-    // Create progress bar for gaze feedback
     this.createGazeProgressBar();
     
     Utils.logInfo("✅ Gaze system initialized");
   }
 
+  /**
+   * Create gaze progress bar
+   */
   createGazeProgressBar() {
-    // Create a progress bar in the center of the screen
     const progressBar = document.createElement("div");
     progressBar.id = "gazeProgress";
     progressBar.style.cssText = `
@@ -480,16 +196,15 @@ class GameController {
     document.body.appendChild(progressBar);
     
     this.gazeProgressBar = progressBar;
-    
-    Utils.logInfo("✅ Gaze progress bar created");
   }
 
+  /**
+   * Update gaze collection
+   */
   updateGazeCollection() {
     if (!this.raycaster) return;
     
     const intersections = this.raycaster.intersections;
-    
-    // Find if we're looking at a treasure
     const treasureIntersection = intersections.find(intersection => {
       return intersection.object.el && intersection.object.el.classList.contains("treasure");
     });
@@ -498,50 +213,48 @@ class GameController {
       const treasureEl = treasureIntersection.object.el;
       const treasureId = treasureEl.id;
       
-      // Check if treasure is already collected
       const treasure = gameState.treasures.find(t => t.id === treasureId);
       if (!treasure || treasure.collected) {
         this.resetGaze();
         return;
       }
       
-      // Start or continue gaze
       if (this.gazeTarget !== treasureId) {
-        // New target
         this.gazeTarget = treasureId;
         this.gazeStartTime = Date.now();
         this.isCollecting = true;
         this.showGazeProgress();
-        Utils.logInfo(`👁️ Started gazing at treasure: ${treasureId}`);
       } else {
-        // Continue gazing at same target
         const elapsed = Date.now() - this.gazeStartTime;
         const progress = Math.min((elapsed / this.gazeThreshold) * 100, 100);
         
-        // Update progress bar
         const progressFill = document.getElementById("gazeProgressFill");
         if (progressFill) {
           progressFill.style.width = `${progress}%`;
         }
         
-        // Check if collection is complete
         if (elapsed >= this.gazeThreshold && this.isCollecting) {
-          this.isCollecting = false; // Prevent multiple collections
+          this.isCollecting = false;
           this.collectTreasure(treasureId);
         }
       }
     } else {
-      // No treasure in sight
       this.resetGaze();
     }
   }
 
+  /**
+   * Show gaze progress
+   */
   showGazeProgress() {
     if (this.gazeProgressBar) {
       this.gazeProgressBar.style.display = "block";
     }
   }
 
+  /**
+   * Hide gaze progress
+   */
   hideGazeProgress() {
     if (this.gazeProgressBar) {
       this.gazeProgressBar.style.display = "none";
@@ -552,9 +265,11 @@ class GameController {
     }
   }
 
+  /**
+   * Reset gaze
+   */
   resetGaze() {
     if (this.gazeTarget) {
-      Utils.logDebug("👁️ Gaze reset");
       this.gazeTarget = null;
       this.gazeStartTime = 0;
       this.isCollecting = true;
@@ -562,93 +277,92 @@ class GameController {
     }
   }
 
+  /**
+   * Collect treasure
+   * @param {string} treasureId
+   */
   collectTreasure(treasureId) {
     Utils.logInfo(`💎 Collecting treasure: ${treasureId}`);
     
-    // Reset gaze immediately
     this.resetGaze();
     
-    // Mark as collected locally (optimistic update)
     const treasure = gameState.treasures.find(t => t.id === treasureId);
     if (treasure) {
       treasure.collected = true;
     }
     
-    // Remove from scene
     const treasureEl = document.getElementById(treasureId);
-    if (treasureEl) {
+    if (treasureEl && treasureEl.parentNode) {
       treasureEl.parentNode.removeChild(treasureEl);
-      Utils.logInfo(`✅ Treasure ${treasureId} removed from scene`);
     }
     
-    // Send to server with correct payload format
     if (this.socket) {
       this.socket.emit("treasure_collected", {
         playerId: gameState.myPlayerId,
         treasureId: treasureId
       });
-      Utils.logInfo(`📤 Sent treasure_collected event to server`);
-      Utils.logDebug(`📦 Payload: { playerId: "${gameState.myPlayerId}", treasureId: "${treasureId}" }`);
     }
     
-    // Update UI
     playerManager.playCollectSound();
     uiManager.showCollectionFeedback();
     gameState.myTreasureCount++;
     uiManager.updateTreasureCount();
   }
 
+  // ========================================
+  // GAME LOOP
+  // ========================================
+
+  /**
+   * Start game loop
+   */
   startGameLoop() {
     Utils.logInfo("🔄 Starting game loop...");
     
     const loop = () => {
       if (gameState.gameStarted) {
-        // Update gaze collection
         this.updateGazeCollection();
-        
-        // Update timer
         uiManager.updateTimer();
       }
-      
       requestAnimationFrame(loop);
     };
     
     loop();
-    Utils.logInfo("✅ Game loop started");
   }
 
-  // Timer
+  /**
+   * Start timer
+   */
   startTimer() {
     setInterval(() => {
       uiManager.updateTimer();
     }, 1000);
   }
 
-  // Event handlers
+  // ========================================
+  // EVENT HANDLERS
+  // ========================================
+
+  /**
+   * Handle treasure collection event
+   * @param {object} data
+   */
   handleTreasureCollection(data) {
-    Utils.logInfo("💎 Treasure collected event received:", data);
-    
     const payload = data.payload || data;
     const treasureId = payload.treasureId;
     const playerId = payload.playerId;
     
-    // Mark treasure as collected
     const treasure = gameState.treasures.find(t => t.id === treasureId);
     if (treasure) {
       treasure.collected = true;
-      Utils.logInfo(`✅ Marked treasure ${treasureId} as collected`);
     }
     
-    // Remove from scene if still there
-    mazeRenderer.removeTreasure(treasureId);
+    mazeManager.removeTreasure(treasureId);
     
-    // Update player's treasure count
     if (payload.treasures !== undefined && gameState.players[playerId]) {
       gameState.players[playerId].treasures = payload.treasures;
-      Utils.logInfo(`📊 Player ${gameState.players[playerId].name} now has ${payload.treasures} treasures`);
     }
     
-    // Update UI
     if (playerId === gameState.myPlayerId) {
       gameState.myTreasureCount = payload.treasures || gameState.myTreasureCount;
       playerManager.playCollectSound();
@@ -659,24 +373,26 @@ class GameController {
     uiManager.updateLeaderboard();
   }
 
+  /**
+   * Handle game won event
+   * @param {object} data
+   */
   handleGameWon(data) {
-    Utils.logInfo("🏆 Game won event received:", data);
+    Utils.logInfo("🏆 Game won!");
     
     const payload = data.payload || data;
     const winnerId = payload.playerId || payload.winnerId;
-    const winnerName = payload.playerName || payload.winnerName || gameState.players[winnerId]?.name || "Desconhecido";
+    const winnerName = payload.playerName || payload.winnerName || 
+                      gameState.players[winnerId]?.name || "Desconhecido";
     
-    // Stop the game
     gameState.gameStarted = false;
     
-    // Stop camera rotation sync
-    if (playerManager && playerManager.stopCameraRotationSync) {
+    if (playerManager.stopCameraRotationSync) {
       playerManager.stopCameraRotationSync();
     }
     
     playerManager.playWinSound();
 
-    // Calculate elapsed time
     let timeStr = "N/A";
     if (gameState.startTime) {
       const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
@@ -719,14 +435,16 @@ class GameController {
       ">Jogar Novamente</button>
     `;
     document.body.appendChild(winModal);
-    
-    Utils.logInfo("✅ Victory screen displayed");
   }
 }
 
-// Create singleton instance
+// Create singleton
 const gameController = new GameController();
 
-// Expose globally
+// Export
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = GameController;
+}
+
 window.gameController = gameController;
 window.GameController = GameController;

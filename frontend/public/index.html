@@ -10,25 +10,39 @@
     <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
 
-    <!-- Custom styles and scripts - Order matters! -->
+    <!-- Custom styles and scripts - NEW ORDER! -->
     <link rel="stylesheet" href="./css/style.css" />
+    
     <!-- 1. Configuration -->
-    <script src="./js/config.js"></script>
+    <script src="./js/config/config.js"></script>
+    
     <!-- 2. Utilities -->
-    <script src="./js/utils.js"></script>
-    <script src="./js/debug-utils.js"></script>
-    <!-- 3. State Management -->
-    <script src="./js/game-state.js"></script>
-    <!-- 4. UI Manager -->
-    <script src="./js/ui-manager.js"></script>
-    <!-- 5. Renderers -->
-    <script src="./js/maze-renderer.js"></script>
-    <script src="./js/player-manager.js"></script>
-    <script src="./js/treasure-manager.js"></script>
-    <!-- 6. Game Controller -->
-    <script src="./js/game-controller.js"></script>
-    <!-- 7. WebSocket Client (Native WebSocket) -->
-    <script src="./js/ws-client.js"></script>
+    <script src="./js/utils/utils.js"></script>
+    <script src="./js/utils/debug-utils.js"></script>
+    <script src="./js/utils/coordinate-utils.js"></script>
+    <script src="./js/utils/collision-utils.js"></script>
+    
+    <!-- 3. Core -->
+    <script src="./js/core/game-state.js"></script>
+    
+    <!-- 4. Network -->
+    <script src="./js/network/ws-client.js"></script>
+    <script src="./js/network/ws-handlers.js"></script>
+    
+    <!-- 5. Controllers -->
+    <script src="./js/controllers/movement-controller.js"></script>
+    <script src="./js/controllers/input-controller.js"></script>
+    <script src="./js/controllers/camera-controller.js"></script>
+    
+    <!-- 6. Managers -->
+    <script src="./js/managers/ui-manager.js"></script>
+    <script src="./js/managers/maze-manager.js"></script>
+    <script src="./js/managers/player-manager.js"></script>
+    <script src="./js/managers/treasure-manager.js"></script>
+    
+    <!-- 7. Game Controller -->
+    <script src="./js/controllers/game-controller.js"></script>
+    
     <!-- 8. Main Application -->
     <script src="./js/main.js" defer></script>
   </head>
@@ -178,7 +192,7 @@
         <a-camera
           id="player-camera"
           look-controls="pointerLockEnabled: true; reverseMouseDrag: false"
-          wasd-controls="acceleration: 30"
+          wasd-controls="enabled: false"
         >
           <!-- Cursor for VR interaction -->
           <a-entity
