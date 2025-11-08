@@ -5,7 +5,6 @@ class UIManager {
     this.initialized = false;
   }
 
-  // Initialize DOM elements - call this after DOM is ready
   init() {
     if (this.initialized) return;
     Utils.logInfo("🎨 Initializing UIManager...");
@@ -15,11 +14,11 @@ class UIManager {
   }
 
   setupElements() {
-    // Cache DOM elements
     Utils.logDebug("🔍 Caching DOM elements...");
     this.elements = {
       nameScreen: document.getElementById("nameScreen"),
       lobbyScreen: document.getElementById("lobbyScreen"),
+      waitingScreen: document.getElementById("waitingScreen"),
       lobby: document.getElementById("lobby"),
       playerList: document.getElementById("playerList"),
       leaderboardList: document.getElementById("leaderboardList"),
@@ -34,11 +33,11 @@ class UIManager {
     Utils.logDebug("DOM elements cached:", {
       nameScreen: !!this.elements.nameScreen,
       lobbyScreen: !!this.elements.lobbyScreen,
+      waitingScreen: !!this.elements.waitingScreen,
       lobby: !!this.elements.lobby,
     });
   }
 
-  // Ensure elements are initialized before use
   ensureInit() {
     if (!this.initialized) {
       this.init();
@@ -63,33 +62,91 @@ class UIManager {
     if (this.elements.nameScreen) {
       this.elements.nameScreen.style.display = "none";
       Utils.logDebug("✅ Name screen hidden");
-    } else {
-      Utils.logError("❌ Name screen element not found!");
     }
 
     if (this.elements.lobbyScreen) {
       this.elements.lobbyScreen.style.display = "block";
       Utils.logDebug("✅ Lobby screen shown");
-    } else {
-      Utils.logError("❌ Lobby screen element not found!");
     }
   }
 
   hideLobby() {
+    Utils.logInfo("🚪 Hiding all lobby elements...");
+    
+    // Hide the main lobby container
     if (this.elements.lobby) {
+      this.elements.lobby.style.display = "none";
       this.elements.lobby.classList.add("hidden");
+      Utils.logDebug("✅ Lobby container hidden");
     }
+    
+    // Hide all individual lobby screens
+    if (this.elements.nameScreen) {
+      this.elements.nameScreen.style.display = "none";
+      Utils.logDebug("✅ Name screen hidden");
+    }
+    if (this.elements.lobbyScreen) {
+      this.elements.lobbyScreen.style.display = "none";
+      Utils.logDebug("✅ Lobby screen hidden");
+    }
+    if (this.elements.waitingScreen) {
+      this.elements.waitingScreen.style.display = "none";
+      Utils.logDebug("✅ Waiting screen hidden");
+    }
+    
+    // Hide lobbyContainer if it exists
+    if (this.elements.lobbyContainer) {
+      this.elements.lobbyContainer.style.display = "none";
+      Utils.logDebug("✅ Lobby container element hidden");
+    }
+    
+    // Hide overlay if it exists
+    if (this.elements.overlay) {
+      this.elements.overlay.style.display = "none";
+      Utils.logDebug("✅ Overlay hidden");
+    }
+    
+    // Ensure A-Frame scene is visible
+    const scene = document.querySelector("a-scene");
+    if (scene) {
+      scene.style.display = "block";
+      scene.style.visibility = "visible";
+      Utils.logDebug("✅ A-Frame scene made visible");
+    }
+    
+    Utils.logInfo("✅ All lobby elements hidden, game scene visible");
   }
 
   showWaitingRoom(roomCode) {
-    this.hideLobby();
-    const waitingRoom = document.getElementById("waitingRoom");
-    if (waitingRoom) {
-      waitingRoom.classList.remove("hidden");
+    Utils.logInfo("🚪 Showing waiting room with code:", roomCode);
+    
+    if (this.elements.nameScreen) {
+      this.elements.nameScreen.style.display = "none";
+      Utils.logDebug("✅ Name screen hidden");
     }
-    if (this.elements.roomCodeDisplay) {
-      this.elements.roomCodeDisplay.textContent = roomCode;
+    if (this.elements.lobbyScreen) {
+      this.elements.lobbyScreen.style.display = "none";
+      Utils.logDebug("✅ Lobby screen hidden");
     }
+    
+    if (this.elements.waitingScreen) {
+      this.elements.waitingScreen.style.display = "block";
+      Utils.logDebug("✅ Waiting screen shown");
+    }
+    
+    if (this.elements.lobby) {
+      this.elements.lobby.classList.remove("hidden");
+      this.elements.lobby.style.display = "flex";
+      Utils.logDebug("✅ Lobby container kept visible");
+    }
+    
+    const currentRoom = document.getElementById("currentRoom");
+    if (currentRoom) {
+      currentRoom.textContent = `Código da Sala: ${roomCode}`;
+      Utils.logDebug("✅ Room code displayed:", roomCode);
+    }
+    
+    Utils.logInfo("✅ Waiting room display complete");
   }
 
   updateConnectionStatus(status) {
@@ -102,11 +159,22 @@ class UIManager {
   }
 
   updatePlayerList() {
+    Utils.logInfo("📋 Updating player list UI...");
+    
     const listEl = this.elements.playerList;
-    if (!listEl) return;
+    if (!listEl) {
+      Utils.logError("❌ playerList element not found!");
+      return;
+    }
+
+    const playerArray = Object.values(gameState.players);
+    Utils.logInfo(`👥 Found ${playerArray.length} players to display`);
+    
+    playerArray.forEach((player, idx) => {
+      Utils.logDebug(`  ${idx + 1}. ${player.name} - Ready: ${player.ready ? '✅' : '⏸️'}`);
+    });
 
     listEl.innerHTML = "<h3>Jogadores na sala:</h3>";
-    const playerArray = Object.values(gameState.players);
 
     playerArray.forEach((player, idx) => {
       const item = document.createElement("div");
@@ -119,15 +187,25 @@ class UIManager {
       nameSpan.textContent = player.name;
       item.appendChild(nameSpan);
 
-      if (player.ready) {
+      const isReady = player.ready === true;
+      Utils.logDebug(`  → ${player.name}: ready=${player.ready}, isReady=${isReady}`);
+      
+      if (isReady) {
         const readySpan = document.createElement("span");
         readySpan.className = "player-ready";
         readySpan.textContent = "✓ PRONTO";
+        readySpan.style.color = "#4CAF50";
+        readySpan.style.fontWeight = "bold";
         item.appendChild(readySpan);
+        Utils.logDebug(`    ✅ Added PRONTO badge for ${player.name}`);
+      } else {
+        Utils.logDebug(`    ⏸️ No badge for ${player.name} (not ready)`);
       }
 
       listEl.appendChild(item);
     });
+    
+    Utils.logInfo(`✅ Player list UI updated with ${playerArray.length} players`);
   }
 
   updateLeaderboard() {
@@ -234,6 +312,7 @@ class UIManager {
       readyBtn.style.background = isReady
         ? "#FF9800"
         : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
+      Utils.logInfo(`🔘 Ready button updated: ${isReady ? 'NOT READY' : 'READY'}`);
     }
   }
 }
