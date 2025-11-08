@@ -71,81 +71,97 @@ class MovementController {
   }
 
   /**
-   * Attempt to move player
-   * @param {string} direction - Movement direction
-   * @returns {boolean} - Success status
-   */
-  movePlayer(direction) {
-    if (!this.gameState.gameStarted) return false;
-
-    const player = this.gameState.players[this.gameState.myPlayerId];
-    if (!player) {
-      Utils.logWarn("⚠️ Player not found");
-      return false;
-    }
-
-    // Calculate movement
-    const movement = this.calculateMovement(direction);
-    if (!movement) return false;
-
-    const { deltaX, deltaZ, moveAngle, cameraYaw } = movement;
-
-    // Store old position
-    const oldX = player.x;
-    const oldZ = player.z;
-    
-    // Calculate new position
-    const newX = Math.round((oldX + deltaX) * 10) / 10;
-    const newZ = Math.round((oldZ + deltaZ) * 10) / 10;
-
-    Utils.logDebug(`🎯 Move ${direction}: yaw=${cameraYaw.toFixed(1)}°, angle=${moveAngle.toFixed(1)}°`);
-
-    // Check collision
-    if (this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
-      Utils.logDebug(`🚫 Blocked at (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-      return false;
-    }
-
-    // Update position
-    player.x = newX;
-    player.z = newZ;
-    player.rotation = cameraYaw;
-    player.direction = moveAngle;
-    
-    Utils.logInfo(`🚶 Moved: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-
-    // Broadcast to server
-    this.broadcastPosition(newX, newZ, cameraYaw);
-
-    return true;
-  }
-
-  /**
    * Broadcast position to server
    * @param {number} x - X coordinate
    * @param {number} z - Z coordinate
    * @param {number} rotation - Camera rotation
    */
-  broadcastPosition(x, z, rotation) {
-    if (!this.socket || !this.socket.isConnected()) {
-      Utils.logError("❌ Socket not connected");
-      return false;
+    broadcastPosition(x, z, rotation) {
+      if (!this.socket || !this.socket.isConnected()) {
+        Utils.logError("❌ Socket not connected");
+        return false;
+      }
+
+      const sent = this.socket.emit("move", {
+        x: x,
+        z: z,
+        direction: rotation,
+      });
+
+      if (sent) {
+        Utils.logDebug(`✅ Broadcast: (${x.toFixed(1)}, ${z.toFixed(1)}) rot=${rotation.toFixed(0)}°`);
+      } else {
+        Utils.logError("❌ Failed to broadcast position");
+      }
+
+      return sent;
     }
 
-    const sent = this.socket.emit("move", {
-      x: x,
-      z: z,
-      direction: rotation,
-    });
+  /**
+   * Attempt to move player
+   * @param {string} direction - Movement direction
+   * @returns {boolean} - Success status
+   */
+    movePlayer(direction) {
+      if (!this.gameState.gameStarted) return false;
 
-    if (sent) {
-      Utils.logDebug(`✅ Broadcast: (${x.toFixed(1)}, ${z.toFixed(1)}) rot=${rotation.toFixed(0)}°`);
-    } else {
-      Utils.logError("❌ Failed to broadcast position");
+      const player = this.gameState.players[this.gameState.myPlayerId];
+      if (!player) {
+        Utils.logWarn("⚠️ Player not found");
+        return false;
+      }
+
+      // Calculate movement
+      const movement = this.calculateMovement(direction);
+      if (!movement) return false;
+
+      const { deltaX, deltaZ, moveAngle, cameraYaw } = movement;
+
+      // Store old position
+      const oldX = player.x;
+      const oldZ = player.z;
+      
+      // Calculate new position
+      const newX = Math.round((oldX + deltaX) * 10) / 10;
+      const newZ = Math.round((oldZ + deltaZ) * 10) / 10;
+
+      Utils.logDebug(`🎯 Move ${direction}: yaw=${cameraYaw.toFixed(1)}°, angle=${moveAngle.toFixed(1)}°`);
+
+      // Check collision
+      if (this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
+        Utils.logDebug(`🚫 Blocked at (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+        return false;
+      }
+
+      // Update position
+      player.x = newX;
+      player.z = newZ;
+      player.rotation = cameraYaw;
+      player.direction = moveAngle;
+      
+      Utils.logInfo(`🚶 Moved: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
+
+      // Move camera to new position
+      if (window.gameController && window.gameController.cameraController) {
+        window.gameController.cameraController.smoothMoveTo(oldX, oldZ, newX, newZ);
+      }
+
+      // Update player entity visual (ADICIONADO - IMPORTANTE!)
+      if (window.playerManager) {
+        const colorIdx = window.playerManager.getPlayerColorIndex(this.gameState.myPlayerId);
+        window.playerManager.updatePlayerEntity(this.gameState.myPlayerId, colorIdx);
+      }
+
+      // Broadcast to server
+      this.broadcastPosition(newX, newZ, cameraYaw);
+
+      // Play footstep sound
+      if (window.playerManager) {
+        window.playerManager.playFootstep();
+      }
+
+      return true;
     }
-
-    return sent;
-  }
 
   /**
    * Get current camera rotation

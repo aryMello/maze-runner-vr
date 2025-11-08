@@ -178,10 +178,6 @@ class WSHandlers {
     const payload = data.payload || data;
     const playerId = payload.playerId || payload.id;
     
-    if (!playerId || playerId === gameState.myPlayerId) {
-      return; // Skip own updates
-    }
-    
     const player = gameState.players[playerId];
     if (!player) return;
     
@@ -233,7 +229,7 @@ class WSHandlers {
     
     // Render world after short delay
     setTimeout(() => {
-      if (gameState.maze) mazeRenderer.renderMaze();
+      if (gameState.maze) mazeManager.renderMaze();
       
       if (gameState.treasures) {
         if (window.treasureManager) {
@@ -241,7 +237,7 @@ class WSHandlers {
           treasureManager.renderTreasures();
           treasureManager.startProximityCheck();
         } else {
-          mazeRenderer.renderTreasures();
+          mazeManager.renderTreasures();
         }
       }
       
@@ -276,12 +272,12 @@ class WSHandlers {
     
     // Render if game started
     if (gameState.gameStarted) {
-      if (payload.maze && !mazeRenderer.rendered) {
-        mazeRenderer.renderMaze();
+      if (payload.maze && !mazeManager.rendered) {
+        mazeManager.renderMaze();
       }
       
       if (payload.treasures) {
-        setTimeout(() => mazeRenderer.renderTreasures(), 100);
+        setTimeout(() => mazeManager.renderTreasures(), 100);
       }
       
       if (payload.players) {

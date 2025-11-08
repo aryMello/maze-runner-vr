@@ -2,13 +2,12 @@
 // TREASURE MANAGER
 // Manages all treasure-related functionality
 // ========================================
-
 class TreasureManager {
   constructor() {
     this.treasures = [];
     this.myTreasureCount = 0;
-    this.collectRadius = 1.5; // Distance to auto-collect
-    this.checkInterval = 100; // Check every 100ms
+    this.collectRadius = 0.5; // Distance to auto-collect
+    this.checkInterval = 1000; // Check every 100ms
     this.intervalId = null;
     this.lastCollectTime = 0;
     this.collectCooldown = 500; // Prevent double-collect
@@ -34,8 +33,9 @@ class TreasureManager {
     this.collectSound = document.querySelector('#collect-sound');
     
     if (!this.treasuresContainer) {
-      Utils.logWarn("⚠️ Treasures container not found, creating one...");
-      this.createTreasuresContainer();
+      Utils.logWarn("⚠️ Treasures container not found in init, will create when needed");
+    } else {
+      Utils.logInfo("✅ Treasures container found in init");
     }
     
     Utils.logInfo("✅ TreasureManager initialized successfully");
@@ -45,17 +45,28 @@ class TreasureManager {
    * Create treasures container if it doesn't exist
    */
   createTreasuresContainer() {
+    Utils.logInfo("🏗️ Creating treasures container...");
+    
     const scene = document.querySelector('a-scene');
     if (!scene) {
       Utils.logError("❌ A-Frame scene not found!");
       return;
     }
     
+    // Verifica se já existe (por segurança)
+    let existing = document.getElementById('treasures');
+    if (existing) {
+      Utils.logInfo("✅ Treasures container already exists");
+      this.treasuresContainer = existing;
+      return;
+    }
+    
+    // Cria novo container
     this.treasuresContainer = document.createElement('a-entity');
     this.treasuresContainer.setAttribute('id', 'treasures');
     scene.appendChild(this.treasuresContainer);
     
-    Utils.logInfo("✅ Treasures container created");
+    Utils.logInfo("✅ Treasures container created and added to scene");
   }
 
   /**
@@ -161,10 +172,27 @@ class TreasureManager {
    * Render all treasures in the scene
    */
   renderTreasures() {
+    Utils.logInfo("🎨 Starting treasure rendering...");
+    
+    // Tenta obter o container existente
     if (!this.treasuresContainer) {
-      Utils.logError("❌ Treasures container not available");
+      this.treasuresContainer = document.getElementById('treasures');
+      Utils.logDebug("📦 Tried to get existing treasures container:", !!this.treasuresContainer);
+    }
+    
+    // Se não existe, cria um novo
+    if (!this.treasuresContainer) {
+      Utils.logWarn("⚠️ Treasures container not found, creating one...");
+      this.createTreasuresContainer();
+    }
+    
+    // Verifica se conseguiu criar/obter
+    if (!this.treasuresContainer) {
+      Utils.logError("❌ Failed to create/get treasures container");
       return;
     }
+    
+    Utils.logInfo("✅ Treasures container ready");
     
     // Clear existing treasures
     this.treasuresContainer.innerHTML = '';
@@ -271,8 +299,8 @@ class TreasureManager {
   // ========================================
 
   /**
-   * Check proximity to treasures and auto-collect
-   */
+ * Check proximity to treasures and auto-collect
+ */
   checkProximity() {
     if (!gameState.gameStarted) return;
     if (!gameState.myPlayerId) return;
@@ -286,16 +314,25 @@ class TreasureManager {
       return;
     }
     
-    // Check each treasure
+    // Find closest uncollected treasure
+    let closestTreasure = null;
+    let closestDistance = Infinity;
+    
     this.treasures.forEach(treasure => {
       if (treasure.collected) return;
       
       const distance = this.calculateDistance(myPlayer, treasure);
       
-      if (distance < this.collectRadius) {
-        this.collectTreasure(treasure.id);
+      if (distance < this.collectRadius && distance < closestDistance) {
+        closestDistance = distance;
+        closestTreasure = treasure;
       }
     });
+    
+    // Collect only the closest one
+    if (closestTreasure) {
+      this.collectTreasure(closestTreasure.id);
+    }
   }
 
   /**
@@ -311,9 +348,9 @@ class TreasureManager {
   }
 
   /**
-   * Attempt to collect a treasure
-   * @param {string} treasureId
-   */
+ * Attempt to collect a treasure
+ * @param {string} treasureId
+ */
   collectTreasure(treasureId) {
     const treasure = this.getTreasure(treasureId);
     
@@ -329,33 +366,49 @@ class TreasureManager {
     
     Utils.logInfo(`💎 Attempting to collect treasure ${treasureId}`);
     
-    // Check if socket is connected
-    if (!window.socket || !window.socket.isConnected()) {
+    // MARQUE COMO COLETADO IMEDIATAMENTE para evitar spam
+    treasure.collected = true;
+    
+    // Check if socket is connected - TENTE MÚLTIPLAS FORMAS
+    const socket = window.socket || window.gameController?.socket || gameController?.socket;
+    
+    if (!socket) {
+      Utils.logError("❌ Cannot collect - socket not found");
+      treasure.collected = false; // Reverte
+      return;
+    }
+    
+    if (!socket.isConnected || !socket.isConnected()) {
       Utils.logError("❌ Cannot collect - not connected to server");
+      treasure.collected = false; // Reverte
       return;
     }
     
     // Send collection event to server
-    const sent = window.socket.emit("collect_treasure", {
+    const sent = socket.emit("collect_treasure", {
       playerId: gameState.myPlayerId,
       treasureId: treasureId
     });
     
     if (!sent) {
       Utils.logError("❌ Failed to send collect_treasure message");
+      treasure.collected = false; // Reverte
       return;
     }
     
     Utils.logInfo(`✅ Collection request sent for ${treasureId}`);
+    
+    // Remove do DOM imediatamente
+    this.removeTreasureFromScene(treasureId);
     
     // Update last collect time (cooldown)
     this.lastCollectTime = Date.now();
   }
 
   /**
-   * Handle treasure collection confirmation from server
-   * @param {object} data - Server response {treasureId, playerId, treasures}
-   */
+ * Handle treasure collection confirmation from server
+ * @param {object} data - Server response {treasureId, playerId, treasures}
+ */
   handleTreasureCollected(data) {
     Utils.logInfo("💎 Treasure collected event received:", data);
     
@@ -363,14 +416,13 @@ class TreasureManager {
     const playerId = data.playerId;
     
     // Mark as collected locally
-    const success = this.markAsCollected(treasureId, playerId);
-    
-    if (!success) {
-      Utils.logWarn("⚠️ Could not mark treasure as collected");
-      return;
+    const treasure = this.getTreasure(treasureId);
+    if (treasure) {
+      treasure.collected = true;
+      treasure.collectedBy = playerId;
     }
     
-    // Remove from scene
+    // Remove from scene (se ainda não foi removido)
     this.removeTreasureFromScene(treasureId);
     
     // If I collected it
@@ -397,9 +449,10 @@ class TreasureManager {
       Utils.logInfo(`📊 ${gameState.players[playerId].name} now has ${newCount} treasures`);
     }
     
-    // Update leaderboard
-    if (window.uiManager && window.uiManager.updateLeaderboard) {
-      window.uiManager.updateLeaderboard();
+    // ATUALIZAR LEADERBOARD (CRÍTICO!)
+    if (window.uiManager) {
+      uiManager.updateLeaderboard();
+      Utils.logInfo("✅ Leaderboard updated");
     }
   }
 

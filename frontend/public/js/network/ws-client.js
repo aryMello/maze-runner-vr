@@ -1,8 +1,5 @@
-// ========================================
-// WEBSOCKET CLIENT (Refactored)
-// Pure WebSocket connection management
-// Event handling delegated to WSHandlers
-// ========================================
+// WebSocket Client - Native WebSocket Implementation
+// Manages WebSocket connection with event handling
 
 class WSClient {
   constructor(server, path, isLocal) {
@@ -18,14 +15,7 @@ class WSClient {
     this.reconnectDelay = 2000;
   }
 
-  // ========================================
-  // CONNECTION MANAGEMENT
-  // ========================================
-
-  /**
-   * Build WebSocket URL
-   * @returns {string} - WebSocket URL
-   */
+  // Build WebSocket URL
   getWebSocketURL() {
     const norm = Utils.normalizeServer(this.server);
     const wsProto = norm.wsProto || "wss";
@@ -34,52 +24,51 @@ class WSClient {
     return `${wsProto}://${host}${path}`;
   }
 
-  /**
-   * Connect to WebSocket server
-   * @returns {Promise<WSClient>}
-   */
+  // Connect to WebSocket server
   connect() {
     return new Promise((resolve, reject) => {
       try {
         const wsUrl = this.getWebSocketURL();
-        Utils.logInfo("🔌 Connecting to WebSocket:", wsUrl);
+        Utils.logInfo("Connecting to WebSocket:", wsUrl);
 
         this.ws = new WebSocket(wsUrl);
 
         const timeout = setTimeout(() => {
-          Utils.logError("⏰ WebSocket connection timeout (30s)");
-          if (this.ws) {
-            Utils.logInfo("📊 WebSocket state:", this.getState());
-            this.ws.close();
-          }
+          Utils.logError("WebSocket connection timeout");
+          this.ws.close();
           reject(new Error("Connection timeout"));
-        }, 30000); // Aumentado para 30 segundos
+        }, 10000);
 
         this.ws.onopen = () => {
           clearTimeout(timeout);
           this.connected = true;
           this.reconnectAttempts = 0;
           this.id = "ws-" + Math.random().toString(36).substr(2, 9);
-          Utils.logInfo("✅ WebSocket connected!", this.id);
+          Utils.logInfo("✅ WebSocket connected successfully!", this.id);
 
+          uiManager.updateConnectionStatus("connected");
           this.trigger("connect");
           resolve(this);
         };
 
         this.ws.onclose = (event) => {
-          Utils.logInfo("🔌 WebSocket closed", event.code, event.reason);
+          Utils.logInfo("WebSocket closed", event.code, event.reason);
           this.connected = false;
+          uiManager.updateConnectionStatus("disconnected");
           this.trigger("disconnect", event.reason);
 
-          // Attempt reconnection if not clean close
-          if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+          // Attempt reconnection if not a clean close
+          if (
+            event.code !== 1000 &&
+            this.reconnectAttempts < this.maxReconnectAttempts
+          ) {
             this.attemptReconnect();
           }
         };
 
         this.ws.onerror = (error) => {
           clearTimeout(timeout);
-          Utils.logError("❌ WebSocket error:", error);
+          Utils.logError("WebSocket error:", error);
           this.trigger("error", error);
           this.trigger("connect_error", error);
           reject(error);
@@ -89,107 +78,85 @@ class WSClient {
           this.handleMessage(event);
         };
       } catch (error) {
-        Utils.logError("❌ Failed to create WebSocket:", error);
+        Utils.logError("Failed to create WebSocket:", error);
         reject(error);
       }
     });
   }
 
-  /**
-   * Close connection
-   */
-  close() {
-    if (this.ws) {
-      this.ws.close(1000, "Client closing connection");
-      this.connected = false;
-      Utils.logInfo("🔌 WebSocket connection closed");
-    }
-  }
-
-  /**
-   * Attempt to reconnect
-   */
-  attemptReconnect() {
-    this.reconnectAttempts++;
-    Utils.logInfo(`🔄 Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-
-    setTimeout(() => {
-      this.connect().catch((err) => {
-        Utils.logError("❌ Reconnection failed:", err);
-      });
-    }, this.reconnectDelay * this.reconnectAttempts);
-  }
-
-  // ========================================
-  // MESSAGE HANDLING
-  // ========================================
-
-  /**
-   * Handle incoming message
-   * @param {MessageEvent} event
-   */
+  // Handle incoming messages
   handleMessage(event) {
     try {
       const data = JSON.parse(event.data);
       const eventType = data.event || data.type;
 
-      Utils.logDebug("📨 Received:", eventType);
+      // Log with formatted JSON (compact maze as matrix)
+      Utils.logInfo("📨 Received message - Event type:", eventType);
+      Utils.logDebug("📨 Raw message structure:", {
+        hasEvent: !!data.event,
+        hasType: !!data.type,
+        hasPayload: !!data.payload,
+        hasData: !!data.data,
+        eventType: eventType
+      });
 
-      // Trigger event listeners
+      // Create a copy for logging with compact maze
+      const logData = JSON.parse(JSON.stringify(data));
+
+      // Convert maze to compact matrix representation
+      if (logData.payload?.room?.maze) {
+        const maze = logData.payload.room.maze;
+        const mazeString = maze.map((row) => row.join("")).join("\n");
+        console.log(
+          `🗺️ Maze (${maze.length}x${maze[0].length}):\n${mazeString}`
+        );
+        logData.payload.room.maze = `[${maze.length}x${maze[0].length} matrix - see above]`;
+      }
+      if (logData.payload?.maze) {
+        const maze = logData.payload.maze;
+        const mazeString = maze.map((row) => row.join("")).join("\n");
+        console.log(
+          `🗺️ Maze (${maze.length}x${maze[0].length}):\n${mazeString}`
+        );
+        logData.payload.maze = `[${maze.length}x${maze[0].length} matrix - see above]`;
+      }
+
+      console.log("📦 Message content:", JSON.stringify(logData, null, 2));
+
+      // Trigger event based on message structure
       if (data.event) {
+        Utils.logDebug("🎯 Triggering event:", data.event);
         this.trigger(data.event, data.data || data);
       } else if (data.type) {
+        Utils.logDebug("🎯 Triggering type:", data.type);
         this.trigger(data.type, data);
       } else {
+        // Generic message
+        Utils.logWarn("⚠️ Message has no event or type, triggering generic 'message'");
         this.trigger("message", data);
       }
     } catch (e) {
       Utils.logError("❌ Failed to parse message:", e);
+      Utils.logWarn("Raw message data:", event.data);
       this.trigger("message", event.data);
     }
   }
 
-  /**
-   * Send message to server
-   * @param {string} event - Event name
-   * @param {object} data - Event data
-   * @returns {boolean} - Success status
-   */
-  emit(event, data) {
-    if (!this.ws) {
-      Utils.logError("❌ Cannot send - WebSocket is null");
-      return false;
-    }
+  // Attempt to reconnect
+  attemptReconnect() {
+    this.reconnectAttempts++;
+    Utils.logInfo(
+      `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
+    );
 
-    if (this.ws.readyState !== WebSocket.OPEN) {
-      Utils.logError(`❌ Cannot send - WebSocket not open (state: ${this.ws.readyState})`);
-      return false;
-    }
-
-    const message = JSON.stringify({
-      type: event,
-      payload: data,
-    });
-
-    try {
-      this.ws.send(message);
-      Utils.logDebug("📤 Sent:", event);
-      return true;
-    } catch (e) {
-      Utils.logError("❌ Failed to send message:", e);
-      return false;
-    }
+    setTimeout(() => {
+      this.connect().catch((err) => {
+        Utils.logError("Reconnection failed:", err);
+      });
+    }, this.reconnectDelay * this.reconnectAttempts);
   }
 
-  // ========================================
-  // EVENT LISTENERS
-  // ========================================
-
-  /**
-   * Register event listener
-   * @param {string} event - Event name
-   * @param {function} callback - Callback function
-   */
+  // Register event listener
   on(event, callback) {
     if (!this.listeners[event]) {
       this.listeners[event] = [];
@@ -197,80 +164,99 @@ class WSClient {
     this.listeners[event].push(callback);
   }
 
-  /**
-   * Remove event listener
-   * @param {string} event - Event name
-   * @param {function} callback - Callback function (optional)
-   */
+  // Remove event listener
   off(event, callback) {
     if (!this.listeners[event]) return;
-    
     if (callback) {
-      this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback);
+      this.listeners[event] = this.listeners[event].filter(
+        (cb) => cb !== callback
+      );
     } else {
       delete this.listeners[event];
     }
   }
 
-  /**
-   * Trigger event listeners
-   * @param {string} event - Event name
-   * @param {*} data - Event data
-   */
+  // Trigger event listeners
   trigger(event, data) {
     if (this.listeners[event]) {
       this.listeners[event].forEach((callback) => {
         try {
           callback(data);
         } catch (e) {
-          Utils.logError("❌ Error in event listener:", event, e);
+          Utils.logError("Error in event listener:", event, e);
         }
       });
     }
   }
 
-  // ========================================
-  // UTILITY METHODS
-  // ========================================
-
-  /**
-   * Check if connected
-   * @returns {boolean}
-   */
+  // Check if WebSocket is truly connected and ready
   isConnected() {
     const isReady = this.ws && this.ws.readyState === WebSocket.OPEN;
     
-    // Sync connected flag
+    // Sync the connected flag with actual state
     if (isReady && !this.connected) {
+      Utils.logWarn("⚠️ Syncing connected flag to true");
       this.connected = true;
     } else if (!isReady && this.connected) {
+      Utils.logWarn("⚠️ Syncing connected flag to false");
       this.connected = false;
     }
     
     return isReady;
   }
 
-  /**
-   * Get connection state
-   * @returns {string}
-   */
-  getState() {
-    if (!this.ws) return "CLOSED";
-    
-    const states = {
-      [WebSocket.CONNECTING]: "CONNECTING",
-      [WebSocket.OPEN]: "OPEN",
-      [WebSocket.CLOSING]: "CLOSING",
-      [WebSocket.CLOSED]: "CLOSED"
-    };
-    
-    return states[this.ws.readyState] || "UNKNOWN";
-  }
-}
+  // Send message to server
+  emit(event, data) {
+    // Detailed connection check with logging
+    Utils.logDebug("🔍 Checking connection state for emit:", {
+      connected: this.connected,
+      hasWs: !!this.ws,
+      readyState: this.ws ? this.ws.readyState : 'no ws',
+      readyStateExpected: WebSocket.OPEN,
+      event: event
+    });
 
-// Export
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = WSClient;
+    if (!this.ws) {
+      Utils.logError("❌ Cannot send - WebSocket object is null");
+      return false;
+    }
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      Utils.logError(`❌ Cannot send - WebSocket not open. State: ${this.ws.readyState} (OPEN=${WebSocket.OPEN})`);
+      return false;
+    }
+
+    if (!this.connected) {
+      Utils.logWarn("⚠️ Connected flag is false, but readyState is OPEN. Updating flag...");
+      this.connected = true;
+    }
+
+    // Format message according to server expectations: {type, payload}
+    const messageObj = {
+      type: event,
+      payload: data,
+    };
+
+    const message = JSON.stringify(messageObj);
+
+    try {
+      this.ws.send(message);
+      Utils.logDebug("📤 Sent:", event);
+      console.log(JSON.stringify(messageObj, null, 2));
+      return true;
+    } catch (e) {
+      Utils.logError("Failed to send message:", e);
+      return false;
+    }
+  }
+
+  // Close connection
+  close() {
+    if (this.ws) {
+      this.ws.close(1000, "Client closing connection");
+      this.connected = false;
+    }
+  }
 }
 
 window.WSClient = WSClient;
