@@ -74,16 +74,29 @@ class GameController {
   }
 
   /**
-   * Initialize all controllers
-   */
+ * Initialize all controllers (UPDATED WITH VR SUPPORT)
+ */
   initControllers() {
+    Utils.logInfo("🎮 Initializing controllers...");
+    
     // Movement controller
     this.movementController = new MovementController(gameState, collisionUtils);
     this.movementController.init(this.camera, this.socket);
     
-    // Input controller
+    // VR controller (head-based movement)
+    if (window.VRMovementController) {
+      this.vrMovementController = new VRMovementController(
+        this.movementController, 
+        gameState
+      );
+      this.vrMovementController.init(this.camera);
+      Utils.logInfo("✅ VR head movement enabled");
+    }
+    
+    // Keyboard controller
     this.inputController = new InputController(this.movementController);
     this.inputController.init();
+    Utils.logInfo("✅ Keyboard controls enabled");
     
     // Camera controller
     this.cameraController = new CameraController(gameState, coordinateUtils);
@@ -93,7 +106,7 @@ class GameController {
     playerManager.init(this.camera);
     playerManager.startCameraRotationSync();
     
-    Utils.logInfo("✅ Controllers initialized");
+    Utils.logInfo("✅ Controllers initialized (Keyboard + VR)");
   }
 
   /**

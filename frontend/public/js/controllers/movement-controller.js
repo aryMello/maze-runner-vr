@@ -33,8 +33,17 @@ class MovementController {
       return null;
     }
 
-    const cameraRotation = this.camera.getAttribute('rotation');
-    const cameraYaw = cameraRotation.y;
+    // Get camera's forward direction vector (projetado no plano horizontal)
+    const cameraEl = this.camera.object3D;
+    const forwardVector = new THREE.Vector3(0, 0, -1);
+    forwardVector.applyQuaternion(cameraEl.quaternion);
+    
+    // Project to horizontal plane (ignore pitch, only use yaw)
+    forwardVector.y = 0;
+    forwardVector.normalize();
+    
+    // Calculate horizontal yaw from the forward vector
+    const cameraYaw = Math.atan2(forwardVector.x, -forwardVector.z) * (180 / Math.PI);
     
     // Calculate movement angle based on camera direction
     let moveAngle = 0;

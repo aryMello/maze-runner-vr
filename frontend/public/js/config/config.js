@@ -21,6 +21,11 @@ const CONFIG = {
   // Animation Configuration
   COUNTDOWN_START: 3,
   COUNTDOWN_INTERVAL: 1000, // ms
+
+  // VR Configuration
+  VR_MODE: true, // Set to true to force VR mode, false for auto-detect
+  VR_GAZE_TIME: 1000, // ms to confirm movement by looking
+  VR_MOVE_COOLDOWN: 300, // ms between moves
   
   // Player Colors
   PLAYER_COLORS: [
