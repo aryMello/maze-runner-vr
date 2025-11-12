@@ -42,15 +42,18 @@ class MazeManager {
    */
   convertMazeToWalls(mazeGrid) {
     const walls = [];
+    const cellSize = this.gameState.cellSize;
 
     for (let row = 0; row < mazeGrid.length; row++) {
       for (let col = 0; col < mazeGrid[row].length; col++) {
         if (mazeGrid[row][col] === 1) {
-          const { worldX, worldZ } = this.coordinateUtils.gridToWorld(
-            col + 0.5, // Center of cell
-            row + 0.5
-          );
-          walls.push({ x: worldX, z: worldZ });
+          const offsetX = (mazeGrid[0].length * cellSize) / 2;
+          const offsetZ = (mazeGrid.length * cellSize) / 2;
+
+          walls.push({
+            x: col * cellSize - offsetX + cellSize / 2,
+            z: row * cellSize - offsetZ + cellSize / 2,
+          });
         }
       }
     }
@@ -132,7 +135,15 @@ class MazeManager {
    * @param {object} treasure
    */
   renderTreasure(treasure) {
-    const { worldX, worldZ } = this.coordinateUtils.gridToWorld(treasure.x, treasure.z);
+    // Use EXACT SAME calculation as walls
+    const cellSize = this.gameState.cellSize;
+    const mazeSize = this.gameState.maze ? this.gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+
+    // Treasures come as grid coordinates
+    const worldX = treasure.x * cellSize - offsetX;
+    const worldZ = treasure.z * cellSize - offsetZ;
 
     const treasureEl = document.createElement("a-octahedron");
     treasureEl.setAttribute("id", treasure.id);
@@ -164,7 +175,7 @@ class MazeManager {
     });
 
     this.treasuresContainer.appendChild(treasureEl);
-    Utils.logDebug(`✨ Rendered treasure ${treasure.id}`);
+    Utils.logDebug(`✨ Rendered treasure ${treasure.id} at world (${worldX}, ${worldZ})`);
   }
 
   /**

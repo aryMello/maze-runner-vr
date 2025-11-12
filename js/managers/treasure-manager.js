@@ -221,10 +221,20 @@ class TreasureManager {
    * @param {object} treasure
    */
   renderTreasure(treasure) {
+    // Use EXACT SAME calculation as walls
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
+    const offsetX = (mazeSize * cellSize) / 2;
+    const offsetZ = (mazeSize * cellSize) / 2;
+
+    // Treasures come as grid coordinates
+    const worldX = treasure.x * cellSize - offsetX;
+    const worldZ = treasure.z * cellSize - offsetZ;
+
     const treasureEl = document.createElement('a-octahedron');
     
     treasureEl.setAttribute('id', treasure.id);
-    treasureEl.setAttribute('position', `${treasure.x} 1 ${treasure.z}`);
+    treasureEl.setAttribute('position', `${worldX} 1 ${worldZ}`);
     treasureEl.setAttribute('radius', '0.5');
     treasureEl.setAttribute('color', '#FFD700');
     treasureEl.setAttribute('metalness', '0.8');
@@ -244,7 +254,7 @@ class TreasureManager {
     // Hover animation (up and down)
     treasureEl.setAttribute('animation__hover', {
       property: 'position',
-      to: `${treasure.x} 1.5 ${treasure.z}`,
+      to: `${worldX} 1.5 ${worldZ}`,
       dir: 'alternate',
       loop: true,
       dur: 1000,
@@ -253,7 +263,7 @@ class TreasureManager {
     
     this.treasuresContainer.appendChild(treasureEl);
     
-    Utils.logDebug(`✨ Rendered treasure ${treasure.id} at (${treasure.x}, ${treasure.z})`);
+    Utils.logDebug(`✨ Rendered treasure ${treasure.id} at (${treasure.x}, ${treasure.z}) -> world (${worldX}, ${worldZ})`);
   }
 
   /**
