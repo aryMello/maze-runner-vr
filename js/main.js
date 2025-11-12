@@ -255,12 +255,27 @@ function displayRoomsList(rooms) {
   
   if (noRoomsDiv) noRoomsDiv.style.display = "none";
   
+  Utils.logDebug("📋 Displaying rooms:", rooms);
+  
   let html = "";
   rooms.forEach(room => {
-    const code = room.code || room.Code;
-    const playerCount = room.playerCount || room.PlayerCount || 0;
-    const maxPlayers = room.maxPlayers || room.MaxPlayers || 4;
-    const gameStarted = room.gameStarted || room.GameStarted || false;
+    // Get room code
+    const code = room.code || room.Code || room.roomCode || room.RoomCode;
+    
+    // Count players - check if players is an object and count its keys
+    let playerCount = 0;
+    if (room.players && typeof room.players === 'object') {
+      playerCount = Object.keys(room.players).length;
+    } else if (room.playerCount !== undefined) {
+      playerCount = room.playerCount;
+    } else if (room.PlayerCount !== undefined) {
+      playerCount = room.PlayerCount;
+    }
+    
+    const maxPlayers = room.maxPlayers || room.MaxPlayers || room.max_players || 4;
+    const gameStarted = room.gameStarted || room.GameStarted || room.game_started || false;
+    
+    Utils.logDebug(`Room ${code}: ${playerCount}/${maxPlayers} players, started: ${gameStarted}`);
     
     const canJoin = !gameStarted && playerCount < maxPlayers;
     const statusClass = gameStarted ? "started" : (playerCount >= maxPlayers ? "full" : "waiting");
