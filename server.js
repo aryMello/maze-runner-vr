@@ -16,8 +16,6 @@ app.get('/', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🎮 Maze Runner VR Frontend`);
-  console.log(`🌐 Server running at http://localhost:${PORT}`);
-  console.log(`📁 Serving files from: ${__dirname}`);
-  console.log(`\n✨ Open http://localhost:${PORT} in your browser\n`);
+  console.log(`Maze Runner VR Frontend`);
+  console.log(`Open http://localhost:${PORT} in your browser\n`);
 });
