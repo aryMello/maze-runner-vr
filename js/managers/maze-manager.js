@@ -84,7 +84,7 @@ class MazeManager {
       const wallEl = document.createElement("a-box");
       wallEl.setAttribute("position", `${wall.x} 1.5 ${wall.z}`);
       wallEl.setAttribute("width", this.gameState.cellSize.toString());
-      wallEl.setAttribute("height", "3");
+      wallEl.setAttribute("height", "5");
       wallEl.setAttribute("depth", this.gameState.cellSize.toString());
       wallEl.setAttribute("src", "#wall-texture");
       wallEl.setAttribute("shadow", "cast: true; receive: true");
@@ -131,13 +131,13 @@ class MazeManager {
   }
 
   /**
-   * Render single treasure
+   * Render a single treasure
    * @param {object} treasure
    */
   renderTreasure(treasure) {
     // Use EXACT SAME calculation as walls
-    const cellSize = this.gameState.cellSize;
-    const mazeSize = this.gameState.maze ? this.gameState.maze.length : 25;
+    const cellSize = gameState.cellSize;
+    const mazeSize = gameState.maze ? gameState.maze.length : 25;
     const offsetX = (mazeSize * cellSize) / 2;
     const offsetZ = (mazeSize * cellSize) / 2;
 
@@ -145,37 +145,41 @@ class MazeManager {
     const worldX = treasure.x * cellSize - offsetX;
     const worldZ = treasure.z * cellSize - offsetZ;
 
-    const treasureEl = document.createElement("a-octahedron");
-    treasureEl.setAttribute("id", treasure.id);
-    treasureEl.setAttribute("position", `${worldX} 1 ${worldZ}`);
-    treasureEl.setAttribute("radius", "0.5");
-    treasureEl.setAttribute("color", "#FFD700");
-    treasureEl.setAttribute("metalness", "0.8");
-    treasureEl.setAttribute("roughness", "0.2");
-    treasureEl.setAttribute("class", "treasure");
-    treasureEl.setAttribute("shadow", "cast: true");
-
+    const treasureEl = document.createElement('a-octahedron');
+    
+    treasureEl.setAttribute('id', treasure.id);
+    treasureEl.setAttribute('position', `${worldX} 1.8 ${worldZ}`);
+    treasureEl.setAttribute('radius', '0.5');
+    treasureEl.setAttribute('color', '#FFFF00');
+    treasureEl.setAttribute('metalness', '0.2');
+    treasureEl.setAttribute('roughness', '0.8');
+    treasureEl.setAttribute('emissive', '#FFFF00');
+    treasureEl.setAttribute('emissiveIntensity', '0.8');
+    treasureEl.setAttribute('class', 'treasure');
+    treasureEl.setAttribute('shadow', 'cast: true');
+    
     // Rotation animation
-    treasureEl.setAttribute("animation", {
-      property: "rotation",
-      to: "0 360 0",
+    treasureEl.setAttribute('animation', {
+      property: 'rotation',
+      to: '0 360 0',
       loop: true,
       dur: 3000,
-      easing: "linear",
+      easing: 'linear'
     });
-
-    // Hover animation
-    treasureEl.setAttribute("animation__hover", {
-      property: "position",
-      to: `${worldX} 1.5 ${worldZ}`,
-      dir: "alternate",
+    
+    // Hover animation (up and down)
+    treasureEl.setAttribute('animation__hover', {
+      property: 'position',
+      to: `${worldX} 2.2 ${worldZ}`,
+      dir: 'alternate',
       loop: true,
       dur: 1000,
-      easing: "easeInOutSine",
+      easing: 'easeInOutSine'
     });
-
+    
     this.treasuresContainer.appendChild(treasureEl);
-    Utils.logDebug(`✨ Rendered treasure ${treasure.id} at world (${worldX}, ${worldZ})`);
+    
+    Utils.logDebug(`✨ Rendered treasure ${treasure.id} at (${treasure.x}, ${treasure.z}) -> world (${worldX}, ${worldZ})`);
   }
 
   /**

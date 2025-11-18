@@ -7,16 +7,23 @@ const CONFIG = {
   
   // Game Configuration
   CELL_SIZE: 4,
-  MOVE_SPEED: 0.3, // Movement step size in grid units
+  MOVE_SPEED: 2.0, // Grid units per second (reduced for better control)
   COLLECT_RADIUS: 1.5,
   
   // Camera Configuration
   CAMERA_HEIGHT: 1.6, // Eye level on player's head
-  CAMERA_SMOOTH_TIME: 150, // ms for smooth camera movement
   CAMERA_BASED_MOVEMENT: true, // Use camera direction for WASD (Minecraft style)
   
+  // Movement Configuration (NEW)
+  CONTINUOUS_MOVEMENT: true, // Enable continuous movement
+  COLLISION_CHECK_DISTANCE: 0.4, // How far ahead to check for walls
+  PLAYER_RADIUS: 0.3, // Player collision radius
+  
+  // Network Configuration (NEW)
+  POSITION_UPDATE_INTERVAL: 100, // Send position updates every 100ms (increased from 50ms to reduce spam)
+  
   // Sound Configuration
-  FOOTSTEP_INTERVAL: 200, // ms
+  FOOTSTEP_INTERVAL: 400, // ms (adjusted for continuous movement)
   
   // Animation Configuration
   COUNTDOWN_START: 3,
@@ -34,5 +41,6 @@ const CONFIG = {
     "#85C1E2",
   ],
 };
+
 // Expose globally
 window.CONFIG = CONFIG;

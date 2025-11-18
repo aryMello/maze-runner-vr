@@ -234,11 +234,13 @@ class TreasureManager {
     const treasureEl = document.createElement('a-octahedron');
     
     treasureEl.setAttribute('id', treasure.id);
-    treasureEl.setAttribute('position', `${worldX} 1 ${worldZ}`);
+    treasureEl.setAttribute('position', `${worldX} 1.8 ${worldZ}`);
     treasureEl.setAttribute('radius', '0.5');
-    treasureEl.setAttribute('color', '#FFD700');
-    treasureEl.setAttribute('metalness', '0.8');
-    treasureEl.setAttribute('roughness', '0.2');
+    treasureEl.setAttribute('color', '#FFFF00');
+    treasureEl.setAttribute('metalness', '0.2');
+    treasureEl.setAttribute('roughness', '0.8');
+    treasureEl.setAttribute('emissive', '#FFFF00');
+    treasureEl.setAttribute('emissiveIntensity', '0.8');
     treasureEl.setAttribute('class', 'treasure');
     treasureEl.setAttribute('shadow', 'cast: true');
     
@@ -254,7 +256,7 @@ class TreasureManager {
     // Hover animation (up and down)
     treasureEl.setAttribute('animation__hover', {
       property: 'position',
-      to: `${worldX} 1.5 ${worldZ}`,
+      to: `${worldX} 2.2 ${worldZ}`,
       dir: 'alternate',
       loop: true,
       dur: 1000,

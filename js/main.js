@@ -24,9 +24,17 @@ function initializeGame() {
   coordinateUtils = new CoordinateUtils(gameState);
   collisionUtils = new CollisionUtils(gameState);
   
+  // Expose globally for access from other modules
+  window.coordinateUtils = coordinateUtils;
+  window.collisionUtils = collisionUtils;
+  
   // 2. Initialize managers
   mazeManager = new MazeManager(gameState, coordinateUtils);
   playerManager = new PlayerManager(gameState, coordinateUtils);
+  
+  // Expose managers globally
+  window.mazeManager = mazeManager;
+  window.playerManager = playerManager;
   
   // 3. Initialize UI
   uiManager.init();

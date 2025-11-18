@@ -15,13 +15,9 @@ class GameController {
     this.inputController = null;
     this.cameraController = null;
     
-    // Gaze system
-    this.raycaster = null;
-    this.gazeTarget = null;
-    this.gazeStartTime = 0;
-    this.gazeThreshold = 1500;
-    this.isCollecting = false;
-    this.gazeProgressBar = null;
+    // Time limit
+    this.timeLimit = 5 * 60 * 1000; // 5 minutes in milliseconds
+    this.timeLimitTimeout = null;
   }
 
   // ========================================
@@ -60,9 +56,6 @@ class GameController {
       Utils.logInfo(`📹 Camera positioned at (${player.x}, ${player.z})`);
     }
     
-    // Initialize gaze system
-    this.initGazeSystem();
-    
     // Render game world
     this.renderWorld();
     
@@ -77,8 +70,12 @@ class GameController {
    * Initialize all controllers
    */
   initControllers() {
-    // Movement controller
-    this.movementController = new MovementController(gameState, collisionUtils);
+    // Movement controller (pass coordinateUtils)
+    this.movementController = new MovementController(
+      gameState, 
+      collisionUtils,
+      coordinateUtils
+    );
     this.movementController.init(this.camera, this.socket);
     
     // Input controller
@@ -138,178 +135,6 @@ class GameController {
   }
 
   // ========================================
-  // GAZE SYSTEM
-  // ========================================
-
-  /**
-   * Initialize gaze collection system
-   */
-  initGazeSystem() {
-    Utils.logInfo("👁️ Initializing gaze system...");
-    
-    if (!this.camera.components.raycaster) {
-      this.camera.setAttribute("raycaster", {
-        objects: ".treasure",
-        far: 10,
-        interval: 100
-      });
-    }
-    
-    this.raycaster = this.camera.components.raycaster;
-    this.createGazeProgressBar();
-    
-    Utils.logInfo("✅ Gaze system initialized");
-  }
-
-  /**
-   * Create gaze progress bar
-   */
-  createGazeProgressBar() {
-    const progressBar = document.createElement("div");
-    progressBar.id = "gazeProgress";
-    progressBar.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 200px;
-      height: 8px;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 4px;
-      overflow: hidden;
-      display: none;
-      z-index: 1000;
-      border: 2px solid rgba(255, 255, 255, 0.5);
-    `;
-    
-    const progressFill = document.createElement("div");
-    progressFill.id = "gazeProgressFill";
-    progressFill.style.cssText = `
-      width: 0%;
-      height: 100%;
-      background: linear-gradient(90deg, #FFD700, #FFA500);
-      transition: width 0.1s linear;
-      box-shadow: 0 0 10px #FFD700;
-    `;
-    
-    progressBar.appendChild(progressFill);
-    document.body.appendChild(progressBar);
-    
-    this.gazeProgressBar = progressBar;
-  }
-
-  /**
-   * Update gaze collection
-   */
-  updateGazeCollection() {
-    if (!this.raycaster) return;
-    
-    const intersections = this.raycaster.intersections;
-    const treasureIntersection = intersections.find(intersection => {
-      return intersection.object.el && intersection.object.el.classList.contains("treasure");
-    });
-    
-    if (treasureIntersection) {
-      const treasureEl = treasureIntersection.object.el;
-      const treasureId = treasureEl.id;
-      
-      const treasure = gameState.treasures.find(t => t.id === treasureId);
-      if (!treasure || treasure.collected) {
-        this.resetGaze();
-        return;
-      }
-      
-      if (this.gazeTarget !== treasureId) {
-        this.gazeTarget = treasureId;
-        this.gazeStartTime = Date.now();
-        this.isCollecting = true;
-        this.showGazeProgress();
-      } else {
-        const elapsed = Date.now() - this.gazeStartTime;
-        const progress = Math.min((elapsed / this.gazeThreshold) * 100, 100);
-        
-        const progressFill = document.getElementById("gazeProgressFill");
-        if (progressFill) {
-          progressFill.style.width = `${progress}%`;
-        }
-        
-        if (elapsed >= this.gazeThreshold && this.isCollecting) {
-          this.isCollecting = false;
-          this.collectTreasure(treasureId);
-        }
-      }
-    } else {
-      this.resetGaze();
-    }
-  }
-
-  /**
-   * Show gaze progress
-   */
-  showGazeProgress() {
-    if (this.gazeProgressBar) {
-      this.gazeProgressBar.style.display = "block";
-    }
-  }
-
-  /**
-   * Hide gaze progress
-   */
-  hideGazeProgress() {
-    if (this.gazeProgressBar) {
-      this.gazeProgressBar.style.display = "none";
-    }
-    const progressFill = document.getElementById("gazeProgressFill");
-    if (progressFill) {
-      progressFill.style.width = "0%";
-    }
-  }
-
-  /**
-   * Reset gaze
-   */
-  resetGaze() {
-    if (this.gazeTarget) {
-      this.gazeTarget = null;
-      this.gazeStartTime = 0;
-      this.isCollecting = true;
-      this.hideGazeProgress();
-    }
-  }
-
-  /**
-   * Collect treasure
-   * @param {string} treasureId
-   */
-  collectTreasure(treasureId) {
-    Utils.logInfo(`💎 Collecting treasure: ${treasureId}`);
-    
-    this.resetGaze();
-    
-    const treasure = gameState.treasures.find(t => t.id === treasureId);
-    if (treasure) {
-      treasure.collected = true;
-    }
-    
-    const treasureEl = document.getElementById(treasureId);
-    if (treasureEl && treasureEl.parentNode) {
-      treasureEl.parentNode.removeChild(treasureEl);
-    }
-    
-    if (this.socket) {
-      this.socket.emit("treasure_collected", {
-        playerId: gameState.myPlayerId,
-        treasureId: treasureId
-      });
-    }
-    
-    playerManager.playCollectSound();
-    uiManager.showCollectionFeedback();
-    gameState.myTreasureCount++;
-    uiManager.updateTreasureCount();
-  }
-
-  // ========================================
   // GAME LOOP
   // ========================================
 
@@ -321,7 +146,6 @@ class GameController {
     
     const loop = () => {
       if (gameState.gameStarted) {
-        this.updateGazeCollection();
         uiManager.updateTimer();
       }
       requestAnimationFrame(loop);
@@ -337,6 +161,55 @@ class GameController {
     setInterval(() => {
       uiManager.updateTimer();
     }, 1000);
+    
+    // Start time limit countdown
+    this.startTimeLimit();
+  }
+
+  /**
+   * Start time limit (5 minutes)
+   */
+  startTimeLimit() {
+    Utils.logInfo("⏰ Starting 5-minute time limit...");
+    
+    this.timeLimitTimeout = setTimeout(() => {
+      if (gameState.gameStarted) {
+        Utils.logInfo("⏱️ Time limit reached!");
+        this.handleTimeUp();
+      }
+    }, this.timeLimit);
+  }
+
+  /**
+   * Handle time up event
+   */
+  handleTimeUp() {
+    // Find winner (player with most treasures)
+    let winnerId = null;
+    let maxTreasures = -1;
+    let winnerName = "Ninguém";
+    
+    for (const [playerId, player] of Object.entries(gameState.players)) {
+      if (player.treasures > maxTreasures) {
+        maxTreasures = player.treasures;
+        winnerId = playerId;
+        winnerName = player.name;
+      }
+    }
+    
+    // Get current player's treasure count
+    const myTreasures = gameState.players[gameState.myPlayerId]?.treasures || 0;
+    
+    // Trigger game won with time up message
+    this.handleGameWon({
+      payload: {
+        playerId: winnerId,
+        playerName: winnerName,
+        treasures: maxTreasures,
+        timeUp: true,
+        myTreasures: myTreasures
+      }
+    });
   }
 
   // ========================================
@@ -384,8 +257,18 @@ class GameController {
     const winnerId = payload.playerId || payload.winnerId;
     const winnerName = payload.playerName || payload.winnerName || 
                       gameState.players[winnerId]?.name || "Desconhecido";
+    const isTimeUp = payload.timeUp || false;
+    const myTreasures = payload.myTreasures !== undefined 
+      ? payload.myTreasures 
+      : (gameState.players[gameState.myPlayerId]?.treasures || 0);
     
     gameState.gameStarted = false;
+    
+    // Clear time limit timeout
+    if (this.timeLimitTimeout) {
+      clearTimeout(this.timeLimitTimeout);
+      this.timeLimitTimeout = null;
+    }
     
     if (playerManager.stopCameraRotationSync) {
       playerManager.stopCameraRotationSync();
@@ -401,9 +284,17 @@ class GameController {
       timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
     }
 
-    const message = winnerId === gameState.myPlayerId
-      ? "🎉 Você venceu! 🎉"
-      : `🏆 ${winnerName} venceu! 🏆`;
+    // Customize message based on time up or regular win
+    let message;
+    if (isTimeUp) {
+      message = winnerId === gameState.myPlayerId
+        ? "⏰ Tempo Esgotado! Você venceu! 🎉"
+        : `⏰ Tempo Esgotado! ${winnerName} venceu! 🏆`;
+    } else {
+      message = winnerId === gameState.myPlayerId
+        ? "🎉 Você venceu! 🎉"
+        : `🏆 ${winnerName} venceu! 🏆`;
+    }
 
     const winModal = document.createElement("div");
     winModal.style.cssText = `
@@ -421,7 +312,8 @@ class GameController {
     winModal.innerHTML = `
       <h1 style="color: white; font-size: 3em; margin: 0;">${message}</h1>
       <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${timeStr}</p>
-      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Tesouros: ${payload.treasures || 0}</p>
+      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Vencedor: ${payload.treasures || 0} tesouros</p>
+      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Você: ${myTreasures} tesouros</p>
       <button onclick="location.reload()" style="
         padding: 15px 40px;
         font-size: 1.2em;

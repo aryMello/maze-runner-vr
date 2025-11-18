@@ -1,14 +1,25 @@
 // ========================================
-// MOVEMENT CONTROLLER
-// Handles all player movement logic
+// MOVEMENT CONTROLLER (Smooth Continuous Movement)
+// Handles all player movement logic with continuous motion
 // ========================================
 
 class MovementController {
-  constructor(gameState, collisionUtils) {
+  constructor(gameState, collisionUtils, coordinateUtils) {
     this.gameState = gameState;
     this.collisionUtils = collisionUtils;
+    this.coordinateUtils = coordinateUtils || window.coordinateUtils;
     this.camera = null;
     this.socket = null;
+    this.cameraRig = null;
+    
+    // Continuous movement state
+    this.velocity = { x: 0, z: 0 };
+    this.isMoving = false;
+    this.lastUpdateTime = 0;
+    this.lastNetworkUpdate = 0;
+    
+    // Animation frame
+    this.movementLoopId = null;
   }
 
   /**
@@ -19,26 +30,194 @@ class MovementController {
   init(camera, socket) {
     this.camera = camera;
     this.socket = socket;
-    Utils.logInfo("🎮 MovementController initialized");
+    this.cameraRig = camera.parentElement;
+    
+    // Start continuous movement loop
+    this.startMovementLoop();
+    
+    Utils.logInfo("🎮 MovementController initialized (continuous movement)");
   }
 
   /**
-   * Calculate movement based on camera direction and input
-   * @param {string} direction - "north", "south", "east", "west"
-   * @returns {object} - {deltaX, deltaZ, moveAngle}
+   * Start continuous movement update loop
    */
-  calculateMovement(direction) {
+  startMovementLoop() {
+    const loop = (timestamp) => {
+      if (this.gameState.gameStarted) {
+        this.updateMovement(timestamp);
+      }
+      this.movementLoopId = requestAnimationFrame(loop);
+    };
+    
+    this.movementLoopId = requestAnimationFrame(loop);
+    Utils.logInfo("🔄 Continuous movement loop started");
+  }
+
+  /**
+   * Stop movement loop
+   */
+  stopMovementLoop() {
+    if (this.movementLoopId) {
+      cancelAnimationFrame(this.movementLoopId);
+      this.movementLoopId = null;
+    }
+  }
+
+  /**
+   * Update movement based on current velocity
+   * @param {number} timestamp - Current timestamp
+   */
+  updateMovement(timestamp) {
+    if (!this.isMoving) return;
+    
+    // Calculate delta time
+    if (!this.lastUpdateTime) {
+      this.lastUpdateTime = timestamp;
+      return;
+    }
+    
+    const deltaTime = (timestamp - this.lastUpdateTime) / 1000; // Convert to seconds
+    this.lastUpdateTime = timestamp;
+    
+    // Get current player
+    const player = this.gameState.players[this.gameState.myPlayerId];
+    if (!player) {
+      Utils.logWarn("⚠️ Player not found in updateMovement");
+      return;
+    }
+    
+    // Calculate new position (GRID COORDINATES)
+    const deltaX = this.velocity.x * deltaTime;
+    const deltaZ = this.velocity.z * deltaTime;
+    
+    const oldX = player.x;
+    const oldZ = player.z;
+    const newX = player.x + deltaX;
+    const newZ = player.z + deltaZ;
+    
+    // Check collision using grid coordinates
+    if (!this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, CONFIG.PLAYER_RADIUS)) {
+      // Update position (in grid coordinates)
+      player.x = newX;
+      player.z = newZ;
+      
+      // Convert to world coordinates
+      const { worldX, worldZ } = this.coordinateUtils.gridToWorld(newX, newZ);
+      const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
+      
+      // Update camera rig/camera - this ensures smooth camera movement
+      const target = this.cameraRig && this.cameraRig.id === 'rig' ? this.cameraRig : this.camera;
+      if (target) {
+        // Use object3D.position for smooth, direct updates without animation overhead
+        target.object3D.position.set(worldX, cameraHeight, worldZ);
+      }
+      
+      // Update player entity visual to match camera position EXACTLY
+      const playerEl = document.getElementById(`player-${this.gameState.myPlayerId}`);
+      if (playerEl) {
+        // Use object3D.position for frame-perfect sync with camera
+        playerEl.object3D.position.set(worldX, 0.8, worldZ);
+        
+        // Update rotation
+        if (player.rotation !== undefined) {
+          const modelRotation = (player.rotation + 180) % 360;
+          playerEl.object3D.rotation.set(0, THREE.MathUtils.degToRad(modelRotation), 0);
+        }
+      }
+      
+      // Send position update to server (throttled)
+      if (timestamp - this.lastNetworkUpdate >= CONFIG.POSITION_UPDATE_INTERVAL) {
+        this.broadcastPosition(newX, newZ, player.rotation);
+        this.lastNetworkUpdate = timestamp;
+      }
+      
+      // Play footstep sound periodically
+      if (window.playerManager && Math.random() < 0.03) {
+        window.playerManager.playFootstep();
+      }
+    } else {
+      Utils.logDebug(`🚫 Collision at grid (${newX.toFixed(2)}, ${newZ.toFixed(2)})`);
+      // Hit a wall - stop movement
+      this.stopMovement();
+    }
+  }
+
+  /**
+   * Update camera position directly (no animation for smooth movement)
+   * @param {number} x - Grid X coordinate
+   * @param {number} z - Grid Z coordinate
+   */
+  updateCameraPosition(x, z) {
+    // This method is no longer used - camera update is inline in updateMovement
+    // Kept for backwards compatibility
+  }
+
+  /**
+   * Set movement velocity based on direction
+   * @param {string} direction - "north", "south", "east", "west"
+   */
+  setMovementDirection(direction) {
+    if (!this.gameState.gameStarted) return;
+    
+    const movement = this.calculateMovementVector(direction);
+    if (!movement) return;
+    
+    const { deltaX, deltaZ, cameraYaw } = movement;
+    
+    // Set velocity (grid units per second)
+    this.velocity.x = deltaX * CONFIG.MOVE_SPEED;
+    this.velocity.z = deltaZ * CONFIG.MOVE_SPEED;
+    this.isMoving = true;
+    
+    // Update player rotation
+    const player = this.gameState.players[this.gameState.myPlayerId];
+    if (player) {
+      player.rotation = cameraYaw;
+      
+      // Log current position and maze info
+      const mazeSize = this.gameState.maze ? this.gameState.maze.length : 0;
+      Utils.logInfo(`🎯 Movement set: ${direction}`);
+      Utils.logInfo(`   Position: (${player.x.toFixed(2)}, ${player.z.toFixed(2)})`);
+      Utils.logInfo(`   Maze size: ${mazeSize}x${mazeSize}`);
+      Utils.logInfo(`   Velocity: (${this.velocity.x.toFixed(2)}, ${this.velocity.z.toFixed(2)}) grid units/sec`);
+    }
+  }
+
+  /**
+   * Stop movement
+   */
+  stopMovement() {
+    this.velocity.x = 0;
+    this.velocity.z = 0;
+    this.isMoving = false;
+    this.lastUpdateTime = 0;
+    
+    // Send final position to server
+    const player = this.gameState.players[this.gameState.myPlayerId];
+    if (player) {
+      this.broadcastPosition(player.x, player.z, player.rotation);
+    }
+    
+    Utils.logDebug("⏸️ Movement stopped");
+  }
+
+  /**
+   * Calculate movement vector based on camera direction
+   * @param {string} direction - "north", "south", "east", "west"
+   * @returns {object} - {deltaX, deltaZ, cameraYaw}
+   */
+  calculateMovementVector(direction) {
     if (!this.camera) {
       Utils.logError("❌ Camera not initialized");
       return null;
     }
 
-    // Get camera's forward direction vector (projetado no plano horizontal)
+    // Get camera's forward direction vector (projected on horizontal plane)
     const cameraEl = this.camera.object3D;
     const forwardVector = new THREE.Vector3(0, 0, -1);
     forwardVector.applyQuaternion(cameraEl.quaternion);
     
-    // Project to horizontal plane (ignore pitch, only use yaw)
+    // Project to horizontal plane
     forwardVector.y = 0;
     forwardVector.normalize();
     
@@ -72,9 +251,9 @@ class MovementController {
     // Convert to radians
     const moveRad = (moveAngle * Math.PI) / 180;
     
-    // Calculate deltas
-    const deltaX = Math.sin(moveRad) * CONFIG.MOVE_SPEED;
-    const deltaZ = -Math.cos(moveRad) * CONFIG.MOVE_SPEED;
+    // Calculate normalized direction vector
+    const deltaX = Math.sin(moveRad);
+    const deltaZ = -Math.cos(moveRad);
     
     return { deltaX, deltaZ, moveAngle, cameraYaw };
   }
@@ -85,92 +264,28 @@ class MovementController {
    * @param {number} z - Z coordinate
    * @param {number} rotation - Camera rotation
    */
-    broadcastPosition(x, z, rotation) {
-      if (!this.socket || !this.socket.isConnected()) {
-        Utils.logError("❌ Socket not connected");
-        return false;
-      }
-
-      const sent = this.socket.emit("move", {
-        x: x,
-        z: z,
-        direction: rotation,
-      });
-
-      if (sent) {
-        Utils.logDebug(`✅ Broadcast: (${x.toFixed(1)}, ${z.toFixed(1)}) rot=${rotation.toFixed(0)}°`);
-      } else {
-        Utils.logError("❌ Failed to broadcast position");
-      }
-
-      return sent;
+  broadcastPosition(x, z, rotation) {
+    if (!this.socket || !this.socket.isConnected()) {
+      return false;
     }
 
-  /**
-   * Attempt to move player
-   * @param {string} direction - Movement direction
-   * @returns {boolean} - Success status
-   */
-    movePlayer(direction) {
-      if (!this.gameState.gameStarted) return false;
+    // Round to reduce precision spam
+    const roundedX = Math.round(x * 100) / 100;
+    const roundedZ = Math.round(z * 100) / 100;
+    const roundedRotation = Math.round(rotation);
 
-      const player = this.gameState.players[this.gameState.myPlayerId];
-      if (!player) {
-        Utils.logWarn("⚠️ Player not found");
-        return false;
-      }
+    const sent = this.socket.emit("move", {
+      x: roundedX,
+      z: roundedZ,
+      direction: roundedRotation,
+    });
 
-      // Calculate movement
-      const movement = this.calculateMovement(direction);
-      if (!movement) return false;
-
-      const { deltaX, deltaZ, moveAngle, cameraYaw } = movement;
-
-      // Store old position
-      const oldX = player.x;
-      const oldZ = player.z;
-      
-      // Calculate new position
-      const newX = Math.round((oldX + deltaX) * 10) / 10;
-      const newZ = Math.round((oldZ + deltaZ) * 10) / 10;
-
-      Utils.logDebug(`🎯 Move ${direction}: yaw=${cameraYaw.toFixed(1)}°, angle=${moveAngle.toFixed(1)}°`);
-
-      // Check collision
-      if (this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, 0.25)) {
-        Utils.logDebug(`🚫 Blocked at (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-        return false;
-      }
-
-      // Update position
-      player.x = newX;
-      player.z = newZ;
-      player.rotation = cameraYaw;
-      player.direction = moveAngle;
-      
-      Utils.logInfo(`🚶 Moved: (${oldX.toFixed(1)}, ${oldZ.toFixed(1)}) → (${newX.toFixed(1)}, ${newZ.toFixed(1)})`);
-
-      // Move camera to new position
-      if (window.gameController && window.gameController.cameraController) {
-        window.gameController.cameraController.smoothMoveTo(oldX, oldZ, newX, newZ);
-      }
-
-      // Update player entity visual (ADICIONADO - IMPORTANTE!)
-      if (window.playerManager) {
-        const colorIdx = window.playerManager.getPlayerColorIndex(this.gameState.myPlayerId);
-        window.playerManager.updatePlayerEntity(this.gameState.myPlayerId, colorIdx);
-      }
-
-      // Broadcast to server
-      this.broadcastPosition(newX, newZ, cameraYaw);
-
-      // Play footstep sound
-      if (window.playerManager) {
-        window.playerManager.playFootstep();
-      }
-
-      return true;
+    if (sent) {
+      Utils.logDebug(`✅ Broadcast: (${roundedX.toFixed(2)}, ${roundedZ.toFixed(2)}) rot=${roundedRotation}°`);
     }
+
+    return sent;
+  }
 
   /**
    * Get current camera rotation
@@ -180,6 +295,14 @@ class MovementController {
     if (!this.camera) return 0;
     const rotation = this.camera.getAttribute('rotation');
     return rotation ? rotation.y : 0;
+  }
+
+  /**
+   * Cleanup
+   */
+  destroy() {
+    this.stopMovementLoop();
+    this.stopMovement();
   }
 }
 

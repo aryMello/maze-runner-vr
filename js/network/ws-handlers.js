@@ -173,17 +173,44 @@ class WSHandlers {
   }
 
   handlePlayerUpdate(data) {
-    Utils.logInfo("🔄 Player update");
+    Utils.logDebug("🔄 Player update received");
     
     const payload = data.payload || data;
     const playerId = payload.playerId || payload.id;
     
     const player = gameState.players[playerId];
-    if (!player) return;
+    if (!player) {
+      Utils.logWarn(`⚠️ Player ${playerId} not found for update`);
+      return;
+    }
     
+    // For our own player, queue server updates for reconciliation
+    if (playerId === gameState.myPlayerId) {
+      const movementController = window.gameController?.movementController;
+      
+      if (movementController) {
+        // Queue the update - it will be applied when player stops moving
+        movementController.queueServerUpdate(
+          payload.x,
+          payload.z,
+          payload.direction
+        );
+      }
+      
+      // Update non-position data immediately
+      if (payload.treasures !== undefined) {
+        player.treasures = payload.treasures;
+      }
+      if (payload.connected !== undefined) {
+        player.connected = payload.connected;
+      }
+      
+      return;
+    }
+    
+    // For other players, update normally
     let updated = false;
     
-    // Update position
     if (payload.x !== undefined) {
       player.x = payload.x;
       updated = true;
@@ -193,7 +220,6 @@ class WSHandlers {
       updated = true;
     }
     
-    // Update rotation
     if (payload.direction !== undefined) {
       player.rotation = payload.direction;
       player.direction = payload.direction;
@@ -287,7 +313,7 @@ class WSHandlers {
     }
   }
 
-  handleGameWin(data) {
+  handleGameWon(data) {
     Utils.logInfo("🏆 Game won!");
     
     gameController.handleGameWon(data);

@@ -1,6 +1,6 @@
 // ========================================
-// INPUT CONTROLLER
-// Handles keyboard and mouse input
+// INPUT CONTROLLER (Smooth Continuous Movement)
+// Handles keyboard input for continuous movement
 // ========================================
 
 class InputController {
@@ -15,14 +15,10 @@ class InputController {
       east: false
     };
     
-    // Movement timing
-    this.lastMoveTime = 0;
-    this.moveInterval = 100; // ms between moves when holding key
+    // Current active direction
+    this.activeDirection = null;
     
-    // Animation frame ID
-    this.animationFrameId = null;
-    
-    Utils.logInfo("⌨️ InputController created");
+    Utils.logInfo("⌨️ InputController created (continuous movement)");
   }
 
   /**
@@ -30,7 +26,6 @@ class InputController {
    */
   init() {
     this.setupKeyboardListeners();
-    this.startContinuousMovement();
     Utils.logInfo("✅ InputController initialized");
   }
 
@@ -54,7 +49,7 @@ class InputController {
     
     if (direction && !this.keysPressed[direction]) {
       this.keysPressed[direction] = true;
-      this.movementController.movePlayer(direction);
+      this.updateMovement();
       e.preventDefault();
     }
   }
@@ -70,6 +65,41 @@ class InputController {
     
     if (direction) {
       this.keysPressed[direction] = false;
+      this.updateMovement();
+    }
+  }
+
+  /**
+   * Update movement based on currently pressed keys
+   */
+  updateMovement() {
+    // Priority order: north > south > west > east
+    // Only one direction can be active at a time for cleaner movement
+    let newDirection = null;
+    
+    if (this.keysPressed.north) {
+      newDirection = "north";
+    } else if (this.keysPressed.south) {
+      newDirection = "south";
+    } else if (this.keysPressed.west) {
+      newDirection = "west";
+    } else if (this.keysPressed.east) {
+      newDirection = "east";
+    }
+    
+    // Update movement if direction changed
+    if (newDirection !== this.activeDirection) {
+      this.activeDirection = newDirection;
+      
+      if (newDirection) {
+        // Start moving in new direction
+        this.movementController.setMovementDirection(newDirection);
+        Utils.logDebug(`🎮 Started moving: ${newDirection}`);
+      } else {
+        // Stop movement
+        this.movementController.stopMovement();
+        Utils.logDebug("🎮 Stopped moving");
+      }
     }
   }
 
@@ -98,54 +128,6 @@ class InputController {
   }
 
   /**
-   * Start continuous movement loop
-   */
-  startContinuousMovement() {
-    const updateMovement = () => {
-      if (!gameState.gameStarted) {
-        this.animationFrameId = requestAnimationFrame(updateMovement);
-        return;
-      }
-      
-      const now = Date.now();
-      
-      // Rate limit movement
-      if (now - this.lastMoveTime >= this.moveInterval) {
-        // Priority order: north > south > west > east
-        if (this.keysPressed.north) {
-          this.movementController.movePlayer("north");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.south) {
-          this.movementController.movePlayer("south");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.west) {
-          this.movementController.movePlayer("west");
-          this.lastMoveTime = now;
-        } else if (this.keysPressed.east) {
-          this.movementController.movePlayer("east");
-          this.lastMoveTime = now;
-        }
-      }
-      
-      this.animationFrameId = requestAnimationFrame(updateMovement);
-    };
-    
-    updateMovement();
-    Utils.logInfo("🔄 Continuous movement loop started");
-  }
-
-  /**
-   * Stop continuous movement
-   */
-  stopContinuousMovement() {
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-      Utils.logInfo("⏹️ Continuous movement stopped");
-    }
-  }
-
-  /**
    * Reset all keys
    */
   resetKeys() {
@@ -155,6 +137,8 @@ class InputController {
       west: false,
       east: false
     };
+    this.activeDirection = null;
+    this.movementController.stopMovement();
     Utils.logDebug("🔄 Keys reset");
   }
 
@@ -163,7 +147,7 @@ class InputController {
    * @returns {boolean}
    */
   isMoving() {
-    return Object.values(this.keysPressed).some(pressed => pressed);
+    return this.activeDirection !== null;
   }
 
   /**
@@ -171,18 +155,13 @@ class InputController {
    * @returns {string|null}
    */
   getCurrentDirection() {
-    if (this.keysPressed.north) return 'north';
-    if (this.keysPressed.south) return 'south';
-    if (this.keysPressed.west) return 'west';
-    if (this.keysPressed.east) return 'east';
-    return null;
+    return this.activeDirection;
   }
 
   /**
    * Cleanup
    */
   destroy() {
-    this.stopContinuousMovement();
     this.resetKeys();
     Utils.logInfo("🗑️ InputController destroyed");
   }
