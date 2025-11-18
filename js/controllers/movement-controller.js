@@ -297,6 +297,10 @@ class MovementController {
     return rotation ? rotation.y : 0;
   }
 
+  queueServerUpdate() {
+    // Deprecated - position updates are sent in real-time during movement
+  }
+
   /**
    * Cleanup
    */
