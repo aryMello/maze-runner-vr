@@ -7,7 +7,7 @@ const CONFIG = {
   
   // Game Configuration
   CELL_SIZE: 6.0,
-  MOVE_SPEED: 1.5, // Grid units per second (reduced for better control)
+  MOVE_SPEED: 1.0, // Grid units per second (reduced for better control)
   COLLECT_RADIUS: 2.0,
   
   // Camera Configuration

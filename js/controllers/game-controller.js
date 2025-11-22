@@ -16,7 +16,7 @@ class GameController {
     this.cameraController = null;
     
     // Time limit
-    this.timeLimit = 5 * 60 * 1000; // 5 minutes in milliseconds
+    this.timeLimit = 6 * 60 * 1000; // 6 minutes in milliseconds
     this.timeLimitTimeout = null;
   }
 
@@ -167,10 +167,10 @@ class GameController {
   }
 
   /**
-   * Start time limit (5 minutes)
+   * Start time limit (6 minutes)
    */
   startTimeLimit() {
-    Utils.logInfo("⏰ Starting 5-minute time limit...");
+    Utils.logInfo("⏰ Starting 6-minute time limit...");
     
     this.timeLimitTimeout = setTimeout(() => {
       if (gameState.gameStarted) {
