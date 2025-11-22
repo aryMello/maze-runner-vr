@@ -5,52 +5,34 @@
     <title>Maze Runner VR</title>
     <meta name="description" content="Multiplayer VR Maze Runner Game" />
 
-    <!-- A-Frame library -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
     <script src="https://unpkg.com/aframe-animation-component/dist/aframe-animation-component.min.js"></script>
     <script src="https://unpkg.com/aframe-environment-component/dist/aframe-environment-component.min.js"></script>
 
-    <!-- Custom styles and scripts - NEW ORDER! -->
     <link rel="stylesheet" href="./css/style.css" />
     
-    <!-- 1. Configuration -->
     <script src="./js/config/config.js"></script>
-    
-    <!-- 2. Utilities -->
     <script src="./js/utils/utils.js"></script>
     <script src="./js/utils/debug-utils.js"></script>
     <script src="./js/utils/coordinate-utils.js"></script>
     <script src="./js/utils/collision-utils.js"></script>
-    
-    <!-- 3. Core -->
     <script src="./js/core/game-state.js"></script>
-    
-    <!-- 4. Network -->
     <script src="./js/network/ws-client.js"></script>
     <script src="./js/network/ws-handlers.js"></script>
-    
-    <!-- 5. Controllers -->
     <script src="./js/controllers/movement-controller.js"></script>
     <script src="./js/controllers/input-controller.js"></script>
     <script src="./js/controllers/camera-controller.js"></script>
-    
-    <!-- 6. Managers -->
     <script src="./js/managers/ui-manager.js"></script>
     <script src="./js/managers/maze-manager.js"></script>
     <script src="./js/managers/player-manager.js"></script>
     <script src="./js/managers/treasure-manager.js"></script>
-    
-    <!-- 7. Game Controller -->
+    <script src="./js/managers/spectator-manager.js"></script>
     <script src="./js/controllers/game-controller.js"></script>
-    
-    <!-- 8. Main Application -->
     <script src="./js/main.js" defer></script>
   </head>
   <body>
-    <!-- Connection Status -->
     <div id="connectionStatus" class="status-connecting">Conectando...</div>
 
-    <!-- Lobby UI -->
     <div id="lobby">
       <div class="lobby-content">
         <h1>Maze Runner VR</h1>
@@ -58,21 +40,14 @@
         <!-- Name Entry Screen -->
         <div id="nameScreen">
           <p class="subtitle">Insira seu nome para começar</p>
-          <input
-            type="text"
-            id="playerNameInput"
-            placeholder="Seu nome"
-            maxlength="20"
-          />
+          <input type="text" id="playerNameInput" placeholder="Seu nome" maxlength="20" />
           <button id="continueBtn">Continuar</button>
         </div>
 
         <!-- Room Selection Screen -->
         <div id="lobbyScreen" style="display: none">
           <p class="subtitle">Escolha uma opção:</p>
-          <button id="showRoomsBtn" class="primary-btn">
-            Ver Salas Disponíveis
-          </button>
+          <button id="showRoomsBtn" class="primary-btn">Ver Salas Disponíveis</button>
           <button id="createBtn" class="primary-btn">Criar Nova Sala</button>
         </div>
 
@@ -81,26 +56,28 @@
           <h2>Salas Disponíveis</h2>
           <p class="subtitle">Selecione uma sala para entrar</p>
 
+          <!-- Spectator Checkbox - BEFORE joining -->
+          <div id="spectatorOption" class="spectator-option">
+            <label class="spectator-label">
+              <input type="checkbox" id="spectatorCheckbox" />
+              <span class="spectator-checkmark"></span>
+              <span class="spectator-text">👁️ Entrar como Espectador (Drone)</span>
+            </label>
+            <p class="spectator-info">
+              Espectadores assistem de cima e <strong>não contam como jogadores</strong>.
+            </p>
+          </div>
+
           <div id="roomsListContainer">
-            <div id="loadingRooms" class="loading-message">
-              Carregando salas...
-            </div>
-            <div
-              id="noRoomsMessage"
-              class="no-rooms-message"
-              style="display: none"
-            >
-              Nenhuma sala disponível no momento.
-              <br /><br />
-              Crie uma nova sala!
+            <div id="loadingRooms" class="loading-message">Carregando salas...</div>
+            <div id="noRoomsMessage" class="no-rooms-message" style="display: none">
+              Nenhuma sala disponível.<br><br>Crie uma nova sala!
             </div>
             <div id="roomsList" class="rooms-list"></div>
           </div>
 
           <div class="rooms-actions">
-            <button id="refreshRoomsBtn" class="secondary-btn">
-              🔄 Atualizar
-            </button>
+            <button id="refreshRoomsBtn" class="secondary-btn">🔄 Atualizar</button>
             <button id="backToLobbyBtn" class="secondary-btn">← Voltar</button>
           </div>
         </div>
@@ -109,146 +86,67 @@
         <div id="waitingScreen" style="display: none">
           <h2 class="waiting-title">Esperando jogadores...</h2>
           <p id="currentRoom" class="room-code"></p>
+          
+          <!-- Spectator Status Banner -->
+          <div id="spectatorStatusBanner" class="spectator-status-banner" style="display: none;">
+            👁️ Você está como <strong>ESPECTADOR</strong>
+            <br><small>Você não será contado como jogador</small>
+          </div>
+          
           <div id="playerList"></div>
           <p class="player-info">Min 2 jogadores • Max 4 jogadores</p>
-          <button id="readyBtn">Começar</button>
+          <button id="readyBtn">Pronto</button>
           <button id="leaveBtn" class="leave-btn">Sair da sala</button>
         </div>
       </div>
     </div>
 
-    <!-- Countdown -->
     <div id="countdown"></div>
 
-    <!-- HUD -->
     <div id="hud">
       <div>Jogador: <span id="playerName"></span></div>
       <div>Tesouros: <span id="treasureCount"></span></div>
       <div>Tempo: <span id="timer">0:00</span></div>
     </div>
 
-    <!-- Leaderboard -->
     <div id="leaderboard">
       <h3>Ranking</h3>
       <div id="leaderboardList"></div>
     </div>
 
-    <!-- Controls Info -->
     <div id="controls-info">
       <strong>Controles:</strong><br />
       W = Frente | S = Trás | A = Esquerda | D = Direita<br />
-      <small
-        >🖱️ Mova o mouse para olhar ao redor | Clique na tela para travar o
-        cursor | ESC para destravar</small
-      >
+      <small>🖱️ Mova o mouse para olhar | Clique para travar cursor | ESC para destravar</small>
     </div>
 
-    <!-- A-Frame Scene -->
     <a-scene id="scene" background="color: #87CEEB">
-      <!-- Assets -->
       <a-assets>
-        <!-- Textures -->
-        <img
-          id="grass-texture"
-          src="./assets/img/floor-dark.jpg"
-          crossorigin="anonymous"
-        />
-        <img
-          id="wall-texture"
-          src="./assets/img/brick-p.png"
-          crossorigin="anonymous"
-        />
-        <img
-          id="sky-texture"
-          src="./assets/img/sky.jpg"
-          crossorigin="anonymous"
-        />
-
-        <!-- Audio -->
-        <audio
-          id="footstep-sound"
-          src="./assets/sounds/footstep.mp3"
-          preload="auto"
-        ></audio>
-        <audio
-          id="collect-sound"
-          src="./assets/sounds/collect.mp3"
-          preload="auto"
-        ></audio>
-        <audio
-          id="ambient-sound"
-          src="./assets/sounds/ambient.mp3"
-          preload="auto"
-        ></audio>
-        <audio
-          id="win-sound"
-          src="./assets/sounds/victory.mp3"
-          preload="auto"
-        ></audio>
+        <img id="grass-texture" src="./assets/img/floor-dark.jpg" crossorigin="anonymous" />
+        <img id="wall-texture" src="./assets/img/brick-p.png" crossorigin="anonymous" />
+        <img id="sky-texture" src="./assets/img/sky.jpg" crossorigin="anonymous" />
+        <audio id="footstep-sound" src="./assets/sounds/footstep.mp3" preload="auto"></audio>
+        <audio id="collect-sound" src="./assets/sounds/collect.mp3" preload="auto"></audio>
+        <audio id="ambient-sound" src="./assets/sounds/ambient.mp3" preload="auto"></audio>
+        <audio id="win-sound" src="./assets/sounds/victory.mp3" preload="auto"></audio>
       </a-assets>
 
-      <!-- Camera and controls -->
       <a-entity id="rig" position="0 1 0">
-        <a-camera
-          id="player-camera"
-          look-controls="pointerLockEnabled: true; reverseMouseDrag: false"
-          wasd-controls="enabled: false"
-        >
-          <!-- Cursor for VR interaction -->
-          <a-entity
-            cursor="fuse: true; fuseTimeout: 750"
-            position="0 0 -1"
+        <a-camera id="player-camera" look-controls="pointerLockEnabled: true; reverseMouseDrag: false" wasd-controls="enabled: false">
+          <a-entity cursor="fuse: true; fuseTimeout: 750" position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
             material="color: #40E0D0; shader: flat; transparent: true; opacity: 0.9"
-            raycaster="objects: .clickable, .treasure; far: 25; interval: 100"
-          >
+            raycaster="objects: .clickable, .treasure; far: 25; interval: 100">
           </a-entity>
         </a-camera>
       </a-entity>
 
-      <!-- Ambient sound -->
-      <a-sound
-        src="#ambient-sound"
-        autoplay="true"
-        loop="true"
-        volume="0.3"
-        position="0 1.6 0"
-      >
-      </a-sound>
-
-      <!-- Sky with texture -->
+      <a-sound src="#ambient-sound" autoplay="true" loop="true" volume="0.3" position="0 1.6 0"></a-sound>
       <a-sky src="#sky-texture" rotation="0 90 0"></a-sky>
-
-      <!-- Ground with texture -->
-      <a-plane
-        id="ground"
-        position="0 0 0"
-        rotation="-90 0 0"
-        width="100"
-        height="100"
-        src="#grass-texture"
-        repeat="20 20"
-        shadow="receive: true"
-      >
-      </a-plane>
-
-      <!-- Lighting -->
+      <a-plane id="ground" position="0 0 0" rotation="-90 0 0" width="150" height="150" src="#grass-texture" repeat="20 20" shadow="receive: true"></a-plane>
       <a-light type="ambient" color="#BBB" intensity="0.6"></a-light>
-      <a-light
-        type="directional"
-        color="#FFF"
-        intensity="0.8"
-        position="5 10 7"
-        castShadow="true"
-      ></a-light>
-      <a-light
-        type="point"
-        position="0 5 0"
-        color="#FFF"
-        intensity="0.4"
-      ></a-light>
-
-      <!-- Game containers -->
+      <a-light type="directional" color="#FFF" intensity="0.8" position="5 10 7" castShadow="true"></a-light>
+      <a-light type="point" position="0 5 0" color="#FFF" intensity="0.4"></a-light>
       <a-entity id="maze"></a-entity>
       <a-entity id="players"></a-entity>
       <a-entity id="treasures"></a-entity>

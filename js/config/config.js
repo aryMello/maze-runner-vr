@@ -6,8 +6,8 @@ const CONFIG = {
   IS_LOCAL: false,
   
   // Game Configuration
-  CELL_SIZE: 4,
-  MOVE_SPEED: 2.0, // Grid units per second (reduced for better control)
+  CELL_SIZE: 6.0,
+  MOVE_SPEED: 1.5, // Grid units per second (reduced for better control)
   COLLECT_RADIUS: 2.0,
   
   // Camera Configuration

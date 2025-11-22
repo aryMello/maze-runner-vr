@@ -1,6 +1,7 @@
 // ========================================
 // WEBSOCKET EVENT HANDLERS
 // Separates event handling logic from WebSocket client
+// UPDATED: Spectator compatible
 // ========================================
 
 class WSHandlers {
@@ -16,6 +17,7 @@ class WSHandlers {
     
     // Room events
     this.ws.on("room_created", (data) => this.handleRoomCreated(data));
+    this.ws.on("room_state", (data) => this.handleRoomState(data));
     
     // Player events
     this.ws.on("player_joined", (data) => this.handlePlayerJoined(data));
@@ -43,6 +45,38 @@ class WSHandlers {
   // ========================================
   // ROOM HANDLERS
   // ========================================
+
+  handleRoomState(data) {
+    Utils.logInfo("📊 Room state received");
+    
+    const payload = data.payload || data;
+    
+    // Update all room data
+    if (payload.players) {
+      Utils.logInfo(`📋 Syncing ${Object.keys(payload.players).length} players`);
+      gameState.updatePlayers(payload.players);
+    }
+    if (payload.maze) {
+      gameState.setMaze(payload.maze);
+    }
+    if (payload.treasures) {
+      gameState.setTreasures(payload.treasures);
+    }
+    if (payload.gameStarted !== undefined) {
+      gameState.gameStarted = payload.gameStarted;
+    }
+    
+    // Update UI
+    uiManager.updatePlayerList();
+    
+    // If game already started, initialize
+    if (payload.gameStarted && !gameState.initialized) {
+      Utils.logInfo("🎮 Game already in progress - joining as spectator");
+      gameState.initialized = true;
+      uiManager.hideLobby();
+      gameController.initGame();
+    }
+  }
 
   handleRoomCreated(data) {
     Utils.logInfo("🏠 Room created");
@@ -78,9 +112,12 @@ class WSHandlers {
     Utils.logInfo("👤 Player joined");
     
     const payload = data.payload || data;
+    const isSpectator = spectatorManager.getIsSpectator();
     
     if (payload.players) {
-      // Full player list update
+      // Full player list update - works for spectators too!
+      Utils.logInfo(`📋 Updating player list: ${Object.keys(payload.players).length} players`);
+      
       Object.keys(payload.players).forEach(playerId => {
         const serverPlayer = payload.players[playerId];
         if (gameState.players[playerId]) {
@@ -89,11 +126,17 @@ class WSHandlers {
           gameState.players[playerId] = serverPlayer;
         }
       });
+      
+      // For spectators, always show waiting room with updated list
+      if (isSpectator) {
+        uiManager.showWaitingRoom(gameState.room);
+      }
+      
     } else if (payload.id && payload.name) {
       // Single player update
       const isMe = payload.id === gameState.myPlayerId;
       
-      if (isMe) {
+      if (isMe && !isSpectator) {
         if (window._joinTimeout) {
           clearTimeout(window._joinTimeout);
           window._joinTimeout = null;
@@ -103,12 +146,13 @@ class WSHandlers {
         
         const roomCode = gameState.room || gameState.pendingRoomCode;
         uiManager.showWaitingRoom(roomCode);
-        uiManager.updatePlayerList();
       } else {
+        // Add other player or spectator viewing other player
         gameState.players[payload.id] = payload;
       }
     }
     
+    // Always update UI (for both players and spectators)
     uiManager.updatePlayerList();
     
     if (gameState.gameStarted) {
@@ -143,6 +187,7 @@ class WSHandlers {
     Utils.logInfo("✅ Ready status update");
     
     const payload = data.payload || data;
+    const isSpectator = spectatorManager.getIsSpectator();
     
     if (payload.players) {
       // Update all players
@@ -165,10 +210,12 @@ class WSHandlers {
     
     uiManager.updatePlayerList();
     
-    // Sync my ready button
-    const myPlayer = gameState.players[gameState.myPlayerId];
-    if (myPlayer) {
-      uiManager.updateReadyButton(myPlayer.ready);
+    // Sync my ready button (skip for spectators)
+    if (!isSpectator) {
+      const myPlayer = gameState.players[gameState.myPlayerId];
+      if (myPlayer) {
+        uiManager.updateReadyButton(myPlayer.ready);
+      }
     }
   }
 
@@ -184,8 +231,10 @@ class WSHandlers {
       return;
     }
     
-    // For our own player, queue server updates for reconciliation
-    if (playerId === gameState.myPlayerId) {
+    const isSpectator = spectatorManager.getIsSpectator();
+    
+    // For our own player (if not spectator), queue server updates for reconciliation
+    if (playerId === gameState.myPlayerId && !isSpectator) {
       const movementController = window.gameController?.movementController;
       
       if (movementController) {
@@ -208,7 +257,7 @@ class WSHandlers {
       return;
     }
     
-    // For other players, update normally
+    // For other players (or if we're spectator), update normally
     let updated = false;
     
     if (payload.x !== undefined) {
@@ -240,8 +289,25 @@ class WSHandlers {
   handleGameStart(data) {
     Utils.logInfo("🎮 Game starting!");
     
+    const payload = data.payload || data;
+    const isSpectator = spectatorManager.getIsSpectator();
+    
+    // Update game state with server data
+    if (payload.maze || payload.room?.maze) {
+      gameState.setMaze(payload.maze || payload.room.maze);
+    }
+    if (payload.treasures || payload.room?.treasures) {
+      gameState.setTreasures(payload.treasures || payload.room.treasures);
+    }
+    if (payload.players || payload.room?.players) {
+      gameState.updatePlayers(payload.players || payload.room.players);
+    }
+    
     gameState.gameStarted = true;
     gameState.startGame(data);
+    
+    Utils.logInfo(`🎮 Game starting for ${isSpectator ? 'SPECTATOR' : 'PLAYER'}`);
+    Utils.logInfo(`📊 Players in game: ${Object.keys(gameState.players).length}`);
     
     // Hide status indicator
     const statusEl = document.getElementById("connectionStatus");
@@ -261,7 +327,11 @@ class WSHandlers {
         if (window.treasureManager) {
           treasureManager.setTreasures(gameState.treasures);
           treasureManager.renderTreasures();
-          treasureManager.startProximityCheck();
+          
+          // Only start proximity check for players, not spectators
+          if (!isSpectator) {
+            treasureManager.startProximityCheck();
+          }
         } else {
           mazeManager.renderTreasures();
         }
@@ -279,6 +349,7 @@ class WSHandlers {
     Utils.logInfo("🔄 Game update");
     
     const payload = data.payload || data;
+    const isSpectator = spectatorManager.getIsSpectator();
     
     // Store data
     if (payload.maze) gameState.setMaze(payload.maze);
@@ -288,8 +359,8 @@ class WSHandlers {
     // Update UI
     uiManager.updatePlayerList();
     
-    // Sync ready button if in lobby
-    if (!gameState.gameStarted) {
+    // Sync ready button if in lobby (skip for spectators)
+    if (!gameState.gameStarted && !isSpectator) {
       const myPlayer = gameState.players[gameState.myPlayerId];
       if (myPlayer) {
         uiManager.updateReadyButton(myPlayer.ready);
@@ -327,6 +398,7 @@ class WSHandlers {
     Utils.logInfo("💎 Treasure collected");
     
     const payload = data.payload || data;
+    const isSpectator = spectatorManager.getIsSpectator();
     
     if (window.treasureManager) {
       treasureManager.handleTreasureCollected(payload);
@@ -344,7 +416,8 @@ class WSHandlers {
           treasureEl.parentNode.removeChild(treasureEl);
         }
         
-        if (playerId === gameState.myPlayerId) {
+        // Only update our count if we're not a spectator
+        if (playerId === gameState.myPlayerId && !isSpectator) {
           gameState.myTreasureCount++;
           const el = document.getElementById('treasureCount');
           if (el) {

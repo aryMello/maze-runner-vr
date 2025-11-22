@@ -1,6 +1,7 @@
 // ========================================
-// MAIN APPLICATION (Refactored)
+// MAIN APPLICATION (Spectator doesn't join as player)
 // Entry point - orchestrates initialization
+// UPDATED: Complete spectator support with polling
 // ========================================
 
 // Global instances
@@ -10,50 +11,36 @@ let collisionUtils = null;
 let mazeManager = null;
 let playerManager = null;
 
+// Spectator polling interval
+let spectatorPollInterval = null;
+
 // ========================================
 // INITIALIZATION
 // ========================================
 
-/**
- * Initialize all game systems
- */
 function initializeGame() {
   Utils.logInfo("🚀 Initializing Maze Runner VR...");
   
-  // 1. Initialize utilities
   coordinateUtils = new CoordinateUtils(gameState);
   collisionUtils = new CollisionUtils(gameState);
   
-  // Expose globally for access from other modules
   window.coordinateUtils = coordinateUtils;
   window.collisionUtils = collisionUtils;
   
-  // 2. Initialize managers
   mazeManager = new MazeManager(gameState, coordinateUtils);
   playerManager = new PlayerManager(gameState, coordinateUtils);
   
-  // Expose managers globally
   window.mazeManager = mazeManager;
   window.playerManager = playerManager;
   
-  // 3. Initialize UI
   uiManager.init();
-  
-  // 4. Connect to server
   initSocket();
-  
-  // 5. Setup UI handlers
   setupUIHandlers();
-  
-  // 6. Setup A-Frame
   setupAFrameScene();
   
   Utils.logInfo("✅ Application initialized");
 }
 
-/**
- * Initialize WebSocket connection
- */
 function initSocket() {
   Utils.logInfo(`🔌 Connecting to server: ${CONFIG.SERVER_URL}`);
   
@@ -68,11 +55,9 @@ function initSocket() {
       Utils.logInfo("✅ Connected to server");
       socket = s;
       
-      // Setup event handlers
       const handlers = new WSHandlers(socket);
       handlers.registerAll();
       
-      // Set socket in game controller
       gameController.setSocket(socket);
     })
     .catch((err) => {
@@ -81,9 +66,6 @@ function initSocket() {
     });
 }
 
-/**
- * Setup A-Frame scene
- */
 function setupAFrameScene() {
   const scene = document.querySelector("a-scene");
   
@@ -105,9 +87,6 @@ function setupAFrameScene() {
 // UI HANDLERS
 // ========================================
 
-/**
- * Setup all UI event handlers
- */
 function setupUIHandlers() {
   Utils.logInfo("🎮 Setting up UI handlers...");
   
@@ -119,9 +98,6 @@ function setupUIHandlers() {
   Utils.logInfo("✅ UI handlers configured");
 }
 
-/**
- * Name screen handlers
- */
 function setupNameScreen() {
   const continueBtn = document.getElementById("continueBtn");
   const nameInput = document.getElementById("playerNameInput");
@@ -141,9 +117,6 @@ function setupNameScreen() {
   }
 }
 
-/**
- * Lobby screen handlers
- */
 function setupLobbyScreen() {
   const showRoomsBtn = document.getElementById("showRoomsBtn");
   const createBtn = document.getElementById("createBtn");
@@ -161,9 +134,6 @@ function setupLobbyScreen() {
   }
 }
 
-/**
- * Rooms screen handlers
- */
 function setupRoomsScreen() {
   const refreshBtn = document.getElementById("refreshRoomsBtn");
   const backBtn = document.getElementById("backToLobbyBtn");
@@ -180,12 +150,10 @@ function setupRoomsScreen() {
   }
 }
 
-/**
- * Waiting room handlers
- */
 function setupWaitingRoom() {
   const readyBtn = document.getElementById("readyBtn");
   const leaveBtn = document.getElementById("leaveBtn");
+  const spectatorCheckbox = document.getElementById("spectatorCheckbox");
   
   if (readyBtn) {
     readyBtn.addEventListener("click", toggleReady);
@@ -193,7 +161,14 @@ function setupWaitingRoom() {
   
   if (leaveBtn) {
     leaveBtn.addEventListener("click", () => {
-      if (socket && gameState.myPlayerId && gameState.room) {
+      // Stop spectator polling if active
+      if (spectatorPollInterval) {
+        clearInterval(spectatorPollInterval);
+        spectatorPollInterval = null;
+      }
+      
+      // Only send leave if not spectator (spectator never joined)
+      if (socket && gameState.myPlayerId && gameState.room && !spectatorManager.getIsSpectator()) {
         socket.emit("leave_room", {
           playerId: gameState.myPlayerId,
           roomCode: gameState.room,
@@ -202,15 +177,32 @@ function setupWaitingRoom() {
       location.reload();
     });
   }
+  
+  if (spectatorCheckbox) {
+    spectatorCheckbox.addEventListener("change", (e) => {
+      const isSpectator = e.target.checked;
+      spectatorManager.setSpectator(isSpectator);
+      updateSpectatorStatus(isSpectator);
+      uiManager.updatePlayerList();
+      
+      Utils.logInfo(`👁️ Spectator checkbox: ${isSpectator ? 'CHECKED' : 'UNCHECKED'}`);
+    });
+  }
+}
+
+function updateSpectatorStatus(isSpectator) {
+  const readyBtn = document.getElementById("readyBtn");
+  if (readyBtn && isSpectator) {
+    readyBtn.textContent = gameState.isReady ? "Não Pronto (Espectador)" : "Pronto (Espectador)";
+  } else if (readyBtn) {
+    readyBtn.textContent = gameState.isReady ? "Não Pronto" : "Pronto";
+  }
 }
 
 // ========================================
 // ROOM MANAGEMENT
 // ========================================
 
-/**
- * Request list of available rooms
- */
 async function requestRoomsList() {
   Utils.logInfo("📋 Requesting rooms list...");
   
@@ -237,10 +229,6 @@ async function requestRoomsList() {
   }
 }
 
-/**
- * Display rooms list
- * @param {array} rooms
- */
 function displayRoomsList(rooms) {
   const loadingDiv = document.getElementById("loadingRooms");
   const noRoomsDiv = document.getElementById("noRoomsMessage");
@@ -263,14 +251,10 @@ function displayRoomsList(rooms) {
   
   if (noRoomsDiv) noRoomsDiv.style.display = "none";
   
-  Utils.logDebug("📋 Displaying rooms:", rooms);
-  
   let html = "";
   rooms.forEach(room => {
-    // Get room code
     const code = room.code || room.Code || room.roomCode || room.RoomCode;
     
-    // Count players - check if players is an object and count its keys
     let playerCount = 0;
     if (room.players && typeof room.players === 'object') {
       playerCount = Object.keys(room.players).length;
@@ -282,8 +266,6 @@ function displayRoomsList(rooms) {
     
     const maxPlayers = room.maxPlayers || room.MaxPlayers || room.max_players || 4;
     const gameStarted = room.gameStarted || room.GameStarted || room.game_started || false;
-    
-    Utils.logDebug(`Room ${code}: ${playerCount}/${maxPlayers} players, started: ${gameStarted}`);
     
     const canJoin = !gameStarted && playerCount < maxPlayers;
     const statusClass = gameStarted ? "started" : (playerCount >= maxPlayers ? "full" : "waiting");
@@ -305,9 +287,6 @@ function displayRoomsList(rooms) {
   if (roomsList) roomsList.innerHTML = html;
 }
 
-/**
- * Show rooms loading state
- */
 function showRoomsLoading() {
   const loadingDiv = document.getElementById("loadingRooms");
   const noRoomsDiv = document.getElementById("noRoomsMessage");
@@ -318,10 +297,6 @@ function showRoomsLoading() {
   if (roomsList) roomsList.innerHTML = "";
 }
 
-/**
- * Show rooms error
- * @param {string} message
- */
 function showRoomsError(message) {
   const loadingDiv = document.getElementById("loadingRooms");
   const noRoomsDiv = document.getElementById("noRoomsMessage");
@@ -342,9 +317,6 @@ function showRoomsError(message) {
   }
 }
 
-/**
- * Create new room
- */
 function createRoom() {
   if (!gameState.myPlayerName) {
     alert("Erro: Nome não definido");
@@ -353,6 +325,12 @@ function createRoom() {
   
   if (!socket || !socket.isConnected()) {
     alert("Não conectado ao servidor");
+    return;
+  }
+  
+  // Spectators cannot create rooms
+  if (spectatorManager.getIsSpectator()) {
+    alert("Espectadores não podem criar salas. Desmarque a opção de espectador.");
     return;
   }
   
@@ -366,10 +344,6 @@ function createRoom() {
   });
 }
 
-/**
- * Join room from list
- * @param {HTMLElement} element
- */
 function joinRoomFromList(element) {
   const roomCode = element.getAttribute('data-room-code');
   if (!roomCode) return;
@@ -377,18 +351,83 @@ function joinRoomFromList(element) {
   joinRoom(roomCode);
 }
 
-/**
- * Join room by code
- * @param {string} roomCode
- */
+// ========================================
+// SPECTATOR POLLING - Polls room state every 2 seconds
+// ========================================
+
+function startSpectatorPolling(roomCode) {
+  if (!spectatorManager.getIsSpectator()) return;
+  
+  Utils.logInfo("👁️ Starting spectator polling...");
+  
+  // Poll every 2 seconds
+  spectatorPollInterval = setInterval(() => {
+    if (gameState.gameStarted) {
+      // Stop polling once game starts
+      clearInterval(spectatorPollInterval);
+      spectatorPollInterval = null;
+      Utils.logInfo("👁️ Stopped spectator polling (game started)");
+      return;
+    }
+    
+    const httpUrl = CONFIG.SERVER_URL
+      .replace('wss://', 'https://')
+      .replace('ws://', 'http://');
+    const roomApiUrl = `${httpUrl}/api/rooms/${roomCode.toLowerCase()}`;
+    
+    fetch(roomApiUrl)
+      .then(response => response.json())
+      .then(roomData => {
+        const room = roomData.room || roomData;
+        
+        // Update players and ready status
+        if (room.players) {
+          let needsUpdate = false;
+          
+          Object.keys(room.players).forEach(playerId => {
+            const serverPlayer = room.players[playerId];
+            const localPlayer = gameState.players[playerId];
+            
+            if (!localPlayer || localPlayer.ready !== serverPlayer.ready) {
+              needsUpdate = true;
+            }
+          });
+          
+          if (needsUpdate) {
+            Utils.logInfo("👁️ Spectator: Detected player changes, updating...");
+            gameState.updatePlayers(room.players);
+            uiManager.updatePlayerList();
+          }
+        }
+        
+        // Check if game started
+        if (room.gameStarted || room.game_started) {
+          Utils.logInfo("👁️ Spectator: Game started! Stopping poll and initializing...");
+          clearInterval(spectatorPollInterval);
+          spectatorPollInterval = null;
+          
+          // Trigger game start manually
+          gameState.gameStarted = true;
+          uiManager.hideLobby();
+          gameController.initGame();
+        }
+      })
+      .catch(err => {
+        Utils.logWarn("👁️ Spectator polling error:", err);
+      });
+  }, 2000);
+}
+
 function joinRoom(roomCode) {
   if (!gameState.myPlayerName) {
     alert("Erro: Nome não definido");
     return;
   }
   
+  // Generate player ID
   if (!gameState.myPlayerId) {
-    const playerId = "player-" + Math.random().toString(36).substr(2, 9);
+    const prefix = spectatorManager.getIsSpectator() ? "spectator-" : "player-";
+    const playerId = prefix + Math.random().toString(36).substr(2, 9);
     gameState.setPlayerId(playerId);
   }
   
@@ -401,19 +440,85 @@ function joinRoom(roomCode) {
     .then((s) => {
       socket = s;
       
-      // Setup handlers
       const handlers = new WSHandlers(socket);
       handlers.registerAll();
       gameController.setSocket(socket);
       
-      // Hide rooms list
       document.getElementById("roomsListScreen").style.display = "none";
       
-      // Send join
-      socket.emit("join", {
-        playerId: gameState.myPlayerId,
-        name: gameState.myPlayerName,
-      });
+      // ========================================
+      // SPECTATOR WORKAROUND: Get room state from HTTP API first
+      // ========================================
+      if (spectatorManager.getIsSpectator()) {
+        Utils.logInfo("👁️ Spectator connected - fetching room state from API...");
+        
+        // Fetch current room state from HTTP API
+        const httpUrl = CONFIG.SERVER_URL
+          .replace('wss://', 'https://')
+          .replace('ws://', 'http://');
+        const roomApiUrl = `${httpUrl}/api/rooms/${roomCode.toLowerCase()}`;
+        
+        fetch(roomApiUrl)
+          .then(response => response.json())
+          .then(roomData => {
+            Utils.logInfo("📊 Got room state from API:", roomData);
+            
+            // Extract room data
+            const room = roomData.room || roomData;
+            
+            // Update game state with current players
+            if (room.players) {
+              Utils.logInfo(`📋 Syncing ${Object.keys(room.players).length} existing players`);
+              gameState.updatePlayers(room.players);
+            }
+            
+            if (room.maze) {
+              gameState.setMaze(room.maze);
+            }
+            
+            if (room.treasures) {
+              gameState.setTreasures(room.treasures);
+            }
+            
+            // Handle spectator connection locally
+            spectatorManager.handleSpectatorConnection(socket, roomCode);
+            
+            // Show waiting room with synced player list
+            uiManager.showWaitingRoom(roomCode);
+            uiManager.updatePlayerList();
+            
+            Utils.logInfo("✅ Spectator synced with room state");
+            
+            // If game already started, join mid-game
+            if (room.gameStarted || room.game_started) {
+              Utils.logInfo("🎮 Game already in progress - spectating");
+              gameState.gameStarted = true;
+              uiManager.hideLobby();
+              gameController.initGame();
+            } else {
+              // Start polling for updates
+              startSpectatorPolling(roomCode);
+            }
+          })
+          .catch(err => {
+            Utils.logError("❌ Failed to fetch room state:", err);
+            Utils.logInfo("👁️ Spectator will wait for player_joined events...");
+            
+            spectatorManager.handleSpectatorConnection(socket, roomCode);
+            uiManager.showWaitingRoom(roomCode);
+            uiManager.updatePlayerList();
+            
+            // Still start polling as fallback
+            startSpectatorPolling(roomCode);
+          });
+        
+      } else {
+        // Normal player - send join
+        socket.emit("join", {
+          playerId: gameState.myPlayerId,
+          name: gameState.myPlayerName,
+        });
+      }
     })
     .catch((err) => {
       Utils.logError("❌ Failed to join room:", err);
@@ -421,18 +526,34 @@ function joinRoom(roomCode) {
     });
 }
 
-/**
- * Toggle ready status
- */
 function toggleReady() {
   if (!gameState.myPlayerId || !gameState.room) {
     alert("Erro: Dados não definidos");
     return;
   }
   
+  const isSpectator = spectatorManager.getIsSpectator();
+  
+  // ========================================
+  // Spectator ready is local only
+  // ========================================
+  if (isSpectator) {
+    spectatorManager.handleSpectatorReady();
+    uiManager.updateReadyButton(gameState.isReady);
+    uiManager.updatePlayerList();
+    Utils.logInfo("👁️ Spectator ready toggled (local only)");
+    return;
+  }
+  
+  // Normal player - send to server
   const isReady = gameState.toggleReady();
   uiManager.updateReadyButton(isReady);
   uiManager.updatePlayerList();
+  
+  if (!socket || !socket.isConnected()) {
+    Utils.logError("❌ Socket not connected, cannot send ready status");
+    return;
+  }
   
   socket.emit("ready", { ready: isReady });
 }
@@ -446,5 +567,4 @@ window.addEventListener("load", () => {
   initializeGame();
 });
 
-// Global exports
 window.joinRoomFromList = joinRoomFromList;

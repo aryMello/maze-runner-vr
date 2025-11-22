@@ -474,6 +474,192 @@ button:disabled {
   }
 }
 
+/* Spectator Mode Option */
+.spectator-option {
+  margin: 20px 0;
+  padding: 15px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.spectator-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  user-select: none;
+}
+
+.spectator-label input[type="checkbox"] {
+  display: none;
+}
+
+.spectator-checkmark {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  background: white;
+}
+
+.spectator-label input[type="checkbox"]:checked + .spectator-checkmark {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+}
+
+.spectator-label input[type="checkbox"]:checked + .spectator-checkmark::after {
+  content: '✓';
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.spectator-text {
+  flex: 1;
+}
+
+.spectator-info {
+  margin: 10px 0 0 36px;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
+/* Spectator badge in player list */
+.player-spectator {
+  color: #9C27B0;
+  font-size: 12px;
+  font-weight: bold;
+  background: rgba(156, 39, 176, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+/* Spectator mode active indicator */
+.spectator-active-indicator {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #9C27B0, #E91E63);
+  color: white;
+  padding: 10px 25px;
+  border-radius: 25px;
+  font-weight: bold;
+  z-index: 1002;
+  box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
+  animation: pulseGlow 2s ease infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 25px rgba(156, 39, 176, 0.7);
+  }
+}
+
+/* Drone view overlay hint */
+.drone-view-hint {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 15px 30px;
+  border-radius: 10px;
+  text-align: center;
+  z-index: 101;
+  animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Hide spectator in leaderboard styling */
+.leaderboard-item.spectator {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.leaderboard-item.spectator span:first-child::after {
+  content: ' 👁️';
+}
+
+/* Spectator item in player list */
+.spectator-item {
+  background: rgba(156, 39, 176, 0.1) !important;
+  border-left: 5px solid #9C27B0 !important;
+}
+
+/* Disabled checkbox after joining */
+.spectator-label input[type="checkbox"]:disabled + .spectator-checkmark {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spectator-label input[type="checkbox"]:disabled ~ .spectator-text {
+  opacity: 0.6;
+}
+
+/* Info text when checkbox disabled */
+.spectator-option.locked .spectator-info {
+  color: #999;
+}
+
+.spectator-option.locked::after {
+  content: "🔒 Não pode ser alterado após entrar na sala";
+  display: block;
+  font-size: 11px;
+  color: #FF9800;
+  margin-top: 8px;
+}
+
+/* Spectator Status Banner in Waiting Room */
+.spectator-status-banner {
+  background: linear-gradient(135deg, #9C27B0, #E91E63);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 10px;
+  margin: 15px 0;
+  text-align: center;
+  box-shadow: 0 4px 15px rgba(156, 39, 176, 0.3);
+}
+
+.spectator-status-banner small {
+  opacity: 0.9;
+}
+
+/* Make spectator option more visible */
+.spectator-option {
+  margin: 20px 0;
+  padding: 15px;
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.15), rgba(233, 30, 99, 0.1));
+  border: 2px solid rgba(156, 39, 176, 0.4);
+  border-radius: 12px;
+  text-align: left;
+}
+
 /* HUD */
 #hud {
   position: fixed;

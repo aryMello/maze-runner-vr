@@ -1,7 +1,7 @@
 // ========================================
-// GAME CONTROLLER (Refactored)
+// GAME CONTROLLER (Spectator doesn't count as player)
 // Orchestrates game initialization and loop
-// Delegates to specialized controllers
+// UPDATED: Full spectator support
 // ========================================
 
 class GameController {
@@ -10,31 +10,18 @@ class GameController {
     this.scene = null;
     this.camera = null;
     
-    // Controllers
     this.movementController = null;
     this.inputController = null;
     this.cameraController = null;
     
-    // Time limit
-    this.timeLimit = 5 * 60 * 1000; // 5 minutes in milliseconds
+    this.timeLimit = 5 * 60 * 1000;
     this.timeLimitTimeout = null;
   }
 
-  // ========================================
-  // INITIALIZATION
-  // ========================================
-
-  /**
-   * Set WebSocket client
-   * @param {WSClient} socket
-   */
   setSocket(socket) {
     this.socket = socket;
   }
 
-  /**
-   * Initialize game
-   */
   initGame() {
     Utils.logInfo("🎮 Initializing game...");
     
@@ -46,31 +33,68 @@ class GameController {
       return;
     }
     
-    // Initialize controllers
-    this.initControllers();
+    const isSpectator = spectatorManager.getIsSpectator();
+    Utils.logInfo(`👁️ Player mode: ${isSpectator ? 'SPECTATOR' : 'PLAYER'}`);
     
-    // Position camera at player start
-    const player = gameState.players[gameState.myPlayerId];
-    if (player) {
-      this.cameraController.positionAtPlayer(player.x, player.z);
-      Utils.logInfo(`📹 Camera positioned at (${player.x}, ${player.z})`);
+    if (isSpectator) {
+      this.initSpectatorMode();
+    } else {
+      this.initControllers();
+      
+      const player = gameState.players[gameState.myPlayerId];
+      if (player) {
+        this.cameraController.positionAtPlayer(player.x, player.z);
+        Utils.logInfo(`📹 Camera positioned at (${player.x}, ${player.z})`);
+      }
     }
     
-    // Render game world
     this.renderWorld();
-    
-    // Start game systems
     this.startGameLoop();
     this.startTimer();
     
     Utils.logInfo("✅ Game initialized");
   }
 
-  /**
-   * Initialize all controllers
-   */
+  initSpectatorMode() {
+    Utils.logInfo("👁️ Initializing spectator mode...");
+    
+    spectatorManager.initSpectatorMode(this.camera);
+    
+    this.cameraController = new CameraController(gameState, coordinateUtils);
+    this.cameraController.init(this.camera);
+    
+    playerManager.init(this.camera);
+    // Don't start camera rotation sync for spectator
+    
+    this.showSpectatorIndicator();
+    
+    if (window.treasureManager) {
+      treasureManager.stopProximityCheck();
+    }
+    
+    Utils.logInfo("✅ Spectator mode initialized");
+  }
+
+  showSpectatorIndicator() {
+    const indicator = document.createElement('div');
+    indicator.className = 'spectator-active-indicator';
+    indicator.innerHTML = '👁️ MODO ESPECTADOR';
+    indicator.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(156, 39, 176, 0.9);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-weight: bold;
+      z-index: 9999;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    `;
+    document.body.appendChild(indicator);
+  }
+
   initControllers() {
-    // Movement controller (pass coordinateUtils)
     this.movementController = new MovementController(
       gameState, 
       collisionUtils,
@@ -78,54 +102,47 @@ class GameController {
     );
     this.movementController.init(this.camera, this.socket);
     
-    // Input controller
     this.inputController = new InputController(this.movementController);
     this.inputController.init();
     
-    // Camera controller
     this.cameraController = new CameraController(gameState, coordinateUtils);
     this.cameraController.init(this.camera);
     
-    // Player manager camera sync
     playerManager.init(this.camera);
     playerManager.startCameraRotationSync();
     
     Utils.logInfo("✅ Controllers initialized");
   }
 
-  /**
-   * Render game world
-   */
   renderWorld() {
     Utils.logInfo("🎨 Rendering game world...");
     
-    // Render maze
     if (gameState.maze && gameState.maze.length > 0) {
       mazeManager.renderMaze();
     }
     
-    // Render treasures
     if (gameState.treasures && gameState.treasures.length > 0) {
       if (window.treasureManager) {
         treasureManager.setTreasures(gameState.treasures);
         treasureManager.renderTreasures();
-        treasureManager.startProximityCheck();
+        
+        if (!spectatorManager.getIsSpectator()) {
+          treasureManager.startProximityCheck();
+        }
       } else {
         mazeManager.renderTreasures();
       }
     }
     
-    // Render players
     if (Object.keys(gameState.players).length > 0) {
       playerManager.updatePlayerEntities();
     }
     
-    // Update UI
     uiManager.updateLeaderboard();
     playerManager.initSounds();
     
     const totalTreasures = gameState.treasures.length;
-    if (uiManager.elements.treasureCount) {
+    if (uiManager.elements.treasureCount && !spectatorManager.getIsSpectator()) {
       uiManager.elements.treasureCount.textContent = `0/${totalTreasures}`;
     }
     
@@ -134,13 +151,6 @@ class GameController {
     Utils.logInfo("✅ World rendered");
   }
 
-  // ========================================
-  // GAME LOOP
-  // ========================================
-
-  /**
-   * Start game loop
-   */
   startGameLoop() {
     Utils.logInfo("🔄 Starting game loop...");
     
@@ -154,21 +164,14 @@ class GameController {
     loop();
   }
 
-  /**
-   * Start timer
-   */
   startTimer() {
     setInterval(() => {
       uiManager.updateTimer();
     }, 1000);
     
-    // Start time limit countdown
     this.startTimeLimit();
   }
 
-  /**
-   * Start time limit (5 minutes)
-   */
   startTimeLimit() {
     Utils.logInfo("⏰ Starting 5-minute time limit...");
     
@@ -180,11 +183,7 @@ class GameController {
     }, this.timeLimit);
   }
 
-  /**
-   * Handle time up event
-   */
   handleTimeUp() {
-    // Find winner (player with most treasures)
     let winnerId = null;
     let maxTreasures = -1;
     let winnerName = "Ninguém";
@@ -197,10 +196,10 @@ class GameController {
       }
     }
     
-    // Get current player's treasure count
-    const myTreasures = gameState.players[gameState.myPlayerId]?.treasures || 0;
+    const myTreasures = spectatorManager.getIsSpectator() 
+      ? 0 
+      : (gameState.players[gameState.myPlayerId]?.treasures || 0);
     
-    // Trigger game won with time up message
     this.handleGameWon({
       payload: {
         playerId: winnerId,
@@ -212,14 +211,6 @@ class GameController {
     });
   }
 
-  // ========================================
-  // EVENT HANDLERS
-  // ========================================
-
-  /**
-   * Handle treasure collection event
-   * @param {object} data
-   */
   handleTreasureCollection(data) {
     const payload = data.payload || data;
     const treasureId = payload.treasureId;
@@ -236,7 +227,7 @@ class GameController {
       gameState.players[playerId].treasures = payload.treasures;
     }
     
-    if (playerId === gameState.myPlayerId) {
+    if (playerId === gameState.myPlayerId && !spectatorManager.getIsSpectator()) {
       gameState.myTreasureCount = payload.treasures || gameState.myTreasureCount;
       playerManager.playCollectSound();
       uiManager.showCollectionFeedback();
@@ -246,10 +237,6 @@ class GameController {
     uiManager.updateLeaderboard();
   }
 
-  /**
-   * Handle game won event
-   * @param {object} data
-   */
   handleGameWon(data) {
     Utils.logInfo("🏆 Game won!");
     
@@ -258,13 +245,16 @@ class GameController {
     const winnerName = payload.playerName || payload.winnerName || 
                       gameState.players[winnerId]?.name || "Desconhecido";
     const isTimeUp = payload.timeUp || false;
-    const myTreasures = payload.myTreasures !== undefined 
-      ? payload.myTreasures 
-      : (gameState.players[gameState.myPlayerId]?.treasures || 0);
+    
+    const isSpectator = spectatorManager.getIsSpectator();
+    const myTreasures = isSpectator 
+      ? 'N/A' 
+      : (payload.myTreasures !== undefined 
+          ? payload.myTreasures 
+          : (gameState.players[gameState.myPlayerId]?.treasures || 0));
     
     gameState.gameStarted = false;
     
-    // Clear time limit timeout
     if (this.timeLimitTimeout) {
       clearTimeout(this.timeLimitTimeout);
       this.timeLimitTimeout = null;
@@ -272,6 +262,10 @@ class GameController {
     
     if (playerManager.stopCameraRotationSync) {
       playerManager.stopCameraRotationSync();
+    }
+    
+    if (isSpectator) {
+      spectatorManager.destroy();
     }
     
     playerManager.playWinSound();
@@ -284,9 +278,12 @@ class GameController {
       timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
     }
 
-    // Customize message based on time up or regular win
     let message;
-    if (isTimeUp) {
+    if (isSpectator) {
+      message = isTimeUp 
+        ? `⏰ Tempo Esgotado! ${winnerName} venceu! 🏆`
+        : `🏆 ${winnerName} venceu! 🏆`;
+    } else if (isTimeUp) {
       message = winnerId === gameState.myPlayerId
         ? "⏰ Tempo Esgotado! Você venceu! 🎉"
         : `⏰ Tempo Esgotado! ${winnerName} venceu! 🏆`;
@@ -313,7 +310,9 @@ class GameController {
       <h1 style="color: white; font-size: 3em; margin: 0;">${message}</h1>
       <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${timeStr}</p>
       <p style="color: white; font-size: 1.2em; margin: 10px 0;">Vencedor: ${payload.treasures || 0} tesouros</p>
-      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Você: ${myTreasures} tesouros</p>
+      ${isSpectator 
+        ? '<p style="color: #FFD700; font-size: 1em; margin: 10px 0;">👁️ Você assistiu como espectador</p>' 
+        : `<p style="color: white; font-size: 1.2em; margin: 10px 0;">Você: ${myTreasures} tesouros</p>`}
       <button onclick="location.reload()" style="
         padding: 15px 40px;
         font-size: 1.2em;
@@ -330,10 +329,8 @@ class GameController {
   }
 }
 
-// Create singleton
 const gameController = new GameController();
 
-// Export
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = GameController;
 }
