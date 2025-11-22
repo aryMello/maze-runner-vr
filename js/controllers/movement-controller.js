@@ -15,6 +15,7 @@ class MovementController {
     // Continuous movement state
     this.velocity = { x: 0, z: 0 };
     this.isMoving = false;
+    this.currentDirection = null; // Track which direction key is held
     this.lastUpdateTime = 0;
     this.lastNetworkUpdate = 0;
     
@@ -68,7 +69,7 @@ class MovementController {
    * @param {number} timestamp - Current timestamp
    */
   updateMovement(timestamp) {
-    if (!this.isMoving) return;
+    if (!this.isMoving || !this.currentDirection) return;
     
     // Calculate delta time
     if (!this.lastUpdateTime) {
@@ -86,14 +87,22 @@ class MovementController {
       return;
     }
     
-    // Calculate new position (GRID COORDINATES)
-    const deltaX = this.velocity.x * deltaTime;
-    const deltaZ = this.velocity.z * deltaTime;
+    // RECALCULATE movement vector every frame based on current camera direction
+    const movement = this.calculateMovementVector(this.currentDirection);
+    if (!movement) return;
     
-    const oldX = player.x;
-    const oldZ = player.z;
-    const newX = player.x + deltaX;
-    const newZ = player.z + deltaZ;
+    const { deltaX, deltaZ, cameraYaw } = movement;
+    
+    // Update velocity based on current camera orientation
+    this.velocity.x = deltaX * CONFIG.MOVE_SPEED;
+    this.velocity.z = deltaZ * CONFIG.MOVE_SPEED;
+    
+    // Update player rotation to match camera
+    player.rotation = cameraYaw;
+    
+    // Calculate new position (GRID COORDINATES)
+    const newX = player.x + this.velocity.x * deltaTime;
+    const newZ = player.z + this.velocity.z * deltaTime;
     
     // Check collision using grid coordinates
     if (!this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, CONFIG.PLAYER_RADIUS)) {
@@ -159,27 +168,16 @@ class MovementController {
   setMovementDirection(direction) {
     if (!this.gameState.gameStarted) return;
     
-    const movement = this.calculateMovementVector(direction);
-    if (!movement) return;
-    
-    const { deltaX, deltaZ, cameraYaw } = movement;
-    
-    // Set velocity (grid units per second)
-    this.velocity.x = deltaX * CONFIG.MOVE_SPEED;
-    this.velocity.z = deltaZ * CONFIG.MOVE_SPEED;
+    // Store the direction being held (not the calculated vector)
+    this.currentDirection = direction;
     this.isMoving = true;
     
-    // Update player rotation
     const player = this.gameState.players[this.gameState.myPlayerId];
     if (player) {
-      player.rotation = cameraYaw;
-      
-      // Log current position and maze info
       const mazeSize = this.gameState.maze ? this.gameState.maze.length : 0;
-      Utils.logInfo(`🎯 Movement set: ${direction}`);
+      Utils.logInfo(`🎯 Movement direction set: ${direction}`);
       Utils.logInfo(`   Position: (${player.x.toFixed(2)}, ${player.z.toFixed(2)})`);
       Utils.logInfo(`   Maze size: ${mazeSize}x${mazeSize}`);
-      Utils.logInfo(`   Velocity: (${this.velocity.x.toFixed(2)}, ${this.velocity.z.toFixed(2)}) grid units/sec`);
     }
   }
 
@@ -187,6 +185,7 @@ class MovementController {
    * Stop movement
    */
   stopMovement() {
+    this.currentDirection = null;
     this.velocity.x = 0;
     this.velocity.z = 0;
     this.isMoving = false;
