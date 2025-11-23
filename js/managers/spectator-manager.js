@@ -8,7 +8,7 @@
 class SpectatorManager {
   constructor() {
     this.isSpectator = false;
-    this.droneHeight = 35;
+    this.droneHeight = 50;
     this.droneSpeed = 8;
     this.camera = null;
     this.cameraRig = null;

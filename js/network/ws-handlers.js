@@ -384,10 +384,10 @@ class WSHandlers {
     }
   }
 
-  handleGameWon(data) {
+  handleGameWin(data) {
     Utils.logInfo("🏆 Game won!");
     
-    gameController.handleGameWon(data);
+    gameController.handleGameWin(data);
   }
 
   // ========================================
