@@ -20,7 +20,7 @@ const CONFIG = {
   PLAYER_RADIUS: 0.3, // Player collision radius
   
   // Network Configuration (NEW)
-  POSITION_UPDATE_INTERVAL: 100, // Send position updates every 100ms (increased from 50ms to reduce spam)
+  POSITION_UPDATE_INTERVAL: 500, // Send position updates every 500ms (increased from 50ms to reduce spam)
   
   // Sound Configuration
   FOOTSTEP_INTERVAL: 400, // ms (adjusted for continuous movement)
