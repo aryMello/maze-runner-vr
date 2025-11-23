@@ -28,7 +28,7 @@ class WSHandlers {
     this.ws.on("game_start", (data) => this.handleGameStart(data));
     this.ws.on("game_starting", (data) => this.handleGameStart(data));
     this.ws.on("game_update", (data) => this.handleGameUpdate(data));
-    this.ws.on("game_win", (data) => this.handleGameWin(data));
+    this.ws.on("game_win", (data) => this.handleGameWon(data));
     
     // Treasure events
     this.ws.on("treasure_collected", (data) => this.handleTreasureCollected(data));
