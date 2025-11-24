@@ -1,6 +1,6 @@
 // ========================================
-// MOVEMENT CONTROLLER (Smooth Continuous Movement)
-// Handles all player movement logic with continuous motion
+// MOVEMENT CONTROLLER (VR Enhanced)
+// Handles all player movement logic with VR auto-walk support
 // ========================================
 
 class MovementController {
@@ -15,12 +15,16 @@ class MovementController {
     // Continuous movement state
     this.velocity = { x: 0, z: 0 };
     this.isMoving = false;
-    this.currentDirection = null; // Track which direction key is held
+    this.currentDirection = null;
     this.lastUpdateTime = 0;
     this.lastNetworkUpdate = 0;
     
     // Animation frame
     this.movementLoopId = null;
+    
+    // Collision tracking
+    this.lastCollisionTime = 0;
+    this.collisionCooldown = 100; // ms
   }
 
   /**
@@ -36,7 +40,7 @@ class MovementController {
     // Start continuous movement loop
     this.startMovementLoop();
     
-    Utils.logInfo("🎮 MovementController initialized (continuous movement)");
+    Utils.logInfo("🎮 MovementController initialized (VR enhanced)");
   }
 
   /**
@@ -77,7 +81,7 @@ class MovementController {
       return;
     }
     
-    const deltaTime = (timestamp - this.lastUpdateTime) / 1000; // Convert to seconds
+    const deltaTime = (timestamp - this.lastUpdateTime) / 1000;
     this.lastUpdateTime = timestamp;
     
     // Get current player
@@ -87,26 +91,32 @@ class MovementController {
       return;
     }
     
-    // RECALCULATE movement vector every frame based on current camera direction
+    // Recalculate movement vector based on current camera direction
     const movement = this.calculateMovementVector(this.currentDirection);
     if (!movement) return;
     
     const { deltaX, deltaZ, cameraYaw } = movement;
     
-    // Update velocity based on current camera orientation
+    // Update velocity
     this.velocity.x = deltaX * CONFIG.MOVE_SPEED;
     this.velocity.z = deltaZ * CONFIG.MOVE_SPEED;
     
-    // Update player rotation to match camera
+    // Update player rotation
     player.rotation = cameraYaw;
     
-    // Calculate new position (GRID COORDINATES)
+    // Calculate new position
     const newX = player.x + this.velocity.x * deltaTime;
     const newZ = player.z + this.velocity.z * deltaTime;
     
-    // Check collision using grid coordinates
-    if (!this.collisionUtils.checkWallCollisionWithRadius(newX, newZ, CONFIG.PLAYER_RADIUS)) {
-      // Update position (in grid coordinates)
+    // Check collision
+    const hasCollision = this.collisionUtils.checkWallCollisionWithRadius(
+      newX, 
+      newZ, 
+      CONFIG.PLAYER_RADIUS
+    );
+    
+    if (!hasCollision) {
+      // Update position
       player.x = newX;
       player.z = newZ;
       
@@ -114,20 +124,17 @@ class MovementController {
       const { worldX, worldZ } = this.coordinateUtils.gridToWorld(newX, newZ);
       const cameraHeight = CONFIG.CAMERA_HEIGHT || 1.6;
       
-      // Update camera rig/camera - this ensures smooth camera movement
+      // Update camera rig/camera
       const target = this.cameraRig && this.cameraRig.id === 'rig' ? this.cameraRig : this.camera;
       if (target) {
-        // Use object3D.position for smooth, direct updates without animation overhead
         target.object3D.position.set(worldX, cameraHeight, worldZ);
       }
       
-      // Update player entity visual to match camera position EXACTLY
+      // Update player entity
       const playerEl = document.getElementById(`player-${this.gameState.myPlayerId}`);
       if (playerEl) {
-        // Use object3D.position for frame-perfect sync with camera
         playerEl.object3D.position.set(worldX, 0.8, worldZ);
         
-        // Update rotation
         if (player.rotation !== undefined) {
           const modelRotation = (player.rotation + 180) % 360;
           playerEl.object3D.rotation.set(0, THREE.MathUtils.degToRad(modelRotation), 0);
@@ -140,25 +147,26 @@ class MovementController {
         this.lastNetworkUpdate = timestamp;
       }
       
-      // Play footstep sound periodically
+      // Play footstep sound
       if (window.playerManager && Math.random() < 0.03) {
         window.playerManager.playFootstep();
       }
     } else {
-      Utils.logDebug(`🚫 Collision at grid (${newX.toFixed(2)}, ${newZ.toFixed(2)})`);
-      // Hit a wall - stop movement
-      this.stopMovement();
+      // Hit a wall - notify VR controller
+      const now = Date.now();
+      if (now - this.lastCollisionTime > this.collisionCooldown) {
+        Utils.logDebug(`🚫 Collision at grid (${newX.toFixed(2)}, ${newZ.toFixed(2)})`);
+        this.lastCollisionTime = now;
+        
+        // Notify VR controller if exists
+        if (window.vrAutoWalkController) {
+          window.vrAutoWalkController.onCollision();
+        } else {
+          // For non-VR, stop movement
+          this.stopMovement();
+        }
+      }
     }
-  }
-
-  /**
-   * Update camera position directly (no animation for smooth movement)
-   * @param {number} x - Grid X coordinate
-   * @param {number} z - Grid Z coordinate
-   */
-  updateCameraPosition(x, z) {
-    // This method is no longer used - camera update is inline in updateMovement
-    // Kept for backwards compatibility
   }
 
   /**
@@ -168,7 +176,6 @@ class MovementController {
   setMovementDirection(direction) {
     if (!this.gameState.gameStarted) return;
     
-    // Store the direction being held (not the calculated vector)
     this.currentDirection = direction;
     this.isMoving = true;
     
@@ -176,8 +183,8 @@ class MovementController {
     if (player) {
       const mazeSize = this.gameState.maze ? this.gameState.maze.length : 0;
       Utils.logInfo(`🎯 Movement direction set: ${direction}`);
-      Utils.logInfo(`   Position: (${player.x.toFixed(2)}, ${player.z.toFixed(2)})`);
-      Utils.logInfo(`   Maze size: ${mazeSize}x${mazeSize}`);
+      Utils.logDebug(`   Position: (${player.x.toFixed(2)}, ${player.z.toFixed(2)})`);
+      Utils.logDebug(`   Maze size: ${mazeSize}x${mazeSize}`);
     }
   }
 
@@ -211,7 +218,7 @@ class MovementController {
       return null;
     }
 
-    // Get camera's forward direction vector (projected on horizontal plane)
+    // Get camera's forward direction
     const cameraEl = this.camera.object3D;
     const forwardVector = new THREE.Vector3(0, 0, -1);
     forwardVector.applyQuaternion(cameraEl.quaternion);
@@ -220,23 +227,23 @@ class MovementController {
     forwardVector.y = 0;
     forwardVector.normalize();
     
-    // Calculate horizontal yaw from the forward vector
+    // Calculate yaw
     const cameraYaw = Math.atan2(forwardVector.x, -forwardVector.z) * (180 / Math.PI);
     
-    // Calculate movement angle based on camera direction
+    // Calculate movement angle
     let moveAngle = 0;
     
     switch (direction) {
-      case "north": // W - Forward
+      case "north": // Forward
         moveAngle = cameraYaw;
         break;
-      case "south": // S - Backward
+      case "south": // Backward
         moveAngle = cameraYaw + 180;
         break;
-      case "west": // A - Left
+      case "west": // Left
         moveAngle = cameraYaw - 90;
         break;
-      case "east": // D - Right
+      case "east": // Right
         moveAngle = cameraYaw + 90;
         break;
       default:
@@ -250,7 +257,7 @@ class MovementController {
     // Convert to radians
     const moveRad = (moveAngle * Math.PI) / 180;
     
-    // Calculate normalized direction vector
+    // Calculate direction vector
     const deltaX = Math.sin(moveRad);
     const deltaZ = -Math.cos(moveRad);
     
@@ -268,7 +275,6 @@ class MovementController {
       return false;
     }
 
-    // Round to reduce precision spam
     const roundedX = Math.round(x * 100) / 100;
     const roundedZ = Math.round(z * 100) / 100;
     const roundedRotation = Math.round(rotation);
@@ -288,7 +294,7 @@ class MovementController {
 
   /**
    * Get current camera rotation
-   * @returns {number} - Camera yaw in degrees
+   * @returns {number}
    */
   getCameraRotation() {
     if (!this.camera) return 0;
@@ -296,8 +302,12 @@ class MovementController {
     return rotation ? rotation.y : 0;
   }
 
-  queueServerUpdate() {
-    // Deprecated - position updates are sent in real-time during movement
+  /**
+   * Check if currently moving
+   * @returns {boolean}
+   */
+  isCurrentlyMoving() {
+    return this.isMoving;
   }
 
   /**
@@ -309,10 +319,9 @@ class MovementController {
   }
 }
 
-// Export for module systems
+// Export
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = MovementController;
 }
 
-// Global instance
 window.MovementController = MovementController;

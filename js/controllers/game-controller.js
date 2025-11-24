@@ -1,7 +1,6 @@
 // ========================================
-// GAME CONTROLLER (Refactored)
-// Orchestrates game initialization and loop
-// Delegates to specialized controllers
+// GAME CONTROLLER (VR Enhanced)
+// Orchestrates game initialization with VR support
 // ========================================
 
 class GameController {
@@ -14,9 +13,10 @@ class GameController {
     this.movementController = null;
     this.inputController = null;
     this.cameraController = null;
+    this.vrAutoWalkController = null; // NEW
     
     // Time limit
-    this.timeLimit = 6 * 60 * 1000; // 6 minutes in milliseconds
+    this.timeLimit = 6 * 60 * 1000;
     this.timeLimitTimeout = null;
   }
 
@@ -70,7 +70,7 @@ class GameController {
    * Initialize all controllers
    */
   initControllers() {
-    // Movement controller (pass coordinateUtils)
+    // Movement controller
     this.movementController = new MovementController(
       gameState, 
       collisionUtils,
@@ -78,19 +78,29 @@ class GameController {
     );
     this.movementController.init(this.camera, this.socket);
     
-    // Input controller
-    this.inputController = new InputController(this.movementController);
-    this.inputController.init();
-    
     // Camera controller
     this.cameraController = new CameraController(gameState, coordinateUtils);
     this.cameraController.init(this.camera);
+    
+    // VR Auto-Walk controller (NEW)
+    this.vrAutoWalkController = new VRAutoWalkController(
+      this.movementController,
+      this.cameraController
+    );
+    this.vrAutoWalkController.init();
+    
+    // Expose globally for collision detection
+    window.vrAutoWalkController = this.vrAutoWalkController;
+    
+    // Input controller (for desktop mode)
+    this.inputController = new InputController(this.movementController);
+    this.inputController.init();
     
     // Player manager camera sync
     playerManager.init(this.camera);
     playerManager.startCameraRotationSync();
     
-    Utils.logInfo("✅ Controllers initialized");
+    Utils.logInfo("✅ Controllers initialized (VR enabled)");
   }
 
   /**
@@ -162,7 +172,6 @@ class GameController {
       uiManager.updateTimer();
     }, 1000);
     
-    // Start time limit countdown
     this.startTimeLimit();
   }
 
@@ -184,7 +193,6 @@ class GameController {
    * Handle time up event
    */
   handleTimeUp() {
-    // Find winner (player with most treasures)
     let winnerId = null;
     let maxTreasures = -1;
     let winnerName = "Ninguém";
@@ -197,10 +205,8 @@ class GameController {
       }
     }
     
-    // Get current player's treasure count
     const myTreasures = gameState.players[gameState.myPlayerId]?.treasures || 0;
     
-    // Trigger game won with time up message
     this.handleGameWon({
       payload: {
         playerId: winnerId,
@@ -270,6 +276,11 @@ class GameController {
       this.timeLimitTimeout = null;
     }
     
+    // Stop VR auto-walk
+    if (this.vrAutoWalkController) {
+      this.vrAutoWalkController.stopAutoWalk();
+    }
+    
     if (playerManager.stopCameraRotationSync) {
       playerManager.stopCameraRotationSync();
     }
@@ -284,7 +295,6 @@ class GameController {
       timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
     }
 
-    // Customize message based on time up or regular win
     let message;
     if (isTimeUp) {
       message = winnerId === gameState.myPlayerId
