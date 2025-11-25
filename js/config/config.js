@@ -6,9 +6,9 @@ const CONFIG = {
   IS_LOCAL: false,
   
   // Game Configuration
-  CELL_SIZE: 6.0,
+  CELL_SIZE: 8.0,
   MOVE_SPEED: 1.0, // Grid units per second (reduced for better control)
-  COLLECT_RADIUS: 2.0,
+  COLLECT_RADIUS: 3.0,
   
   // Camera Configuration
   CAMERA_HEIGHT: 1.6, // Eye level on player's head

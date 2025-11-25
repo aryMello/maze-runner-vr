@@ -18,6 +18,7 @@ class PlayerManager {
     this.footstepSound = null;
     this.collectSound = null;
     this.winSound = null;
+    this.ambientSound = null;
     this.lastMoveTime = 0;
     
     // Camera rotation tracking
@@ -54,6 +55,76 @@ class PlayerManager {
     this.footstepSound = document.querySelector("#footstep-sound");
     this.collectSound = document.querySelector("#collect-sound");
     this.winSound = document.querySelector("#win-sound");
+    this.ambientSound = document.querySelector("#ambient-sound");
+    
+    console.log("🔊 Sound elements check:");
+    console.log("  - Footstep:", !!this.footstepSound);
+    console.log("  - Collect:", !!this.collectSound);
+    console.log("  - Win:", !!this.winSound);
+    console.log("  - Ambient:", !!this.ambientSound);
+    
+    // Set up ambient sound for looping
+    if (this.ambientSound) {
+      this.ambientSound.loop = true;
+      this.ambientSound.volume = 0.3; // Adjust volume as needed
+      console.log("  - Ambient sound configured for looping");
+    }
+    
+    // Set volumes for other sounds
+    if (this.footstepSound) {
+      this.footstepSound.volume = 0.4;
+    }
+    if (this.collectSound) {
+      this.collectSound.volume = 0.6;
+    }
+    if (this.winSound) {
+      this.winSound.volume = 0.7;
+    }
+    
+    Utils.logInfo("🔊 Sound elements initialized");
+  }
+
+  /**
+   * Start ambient music
+   */
+  startAmbientMusic() {
+    console.log("🎵 startAmbientMusic called");
+    console.log("  - ambientSound exists:", !!this.ambientSound);
+    
+    if (!this.ambientSound) {
+      console.warn("⚠️ Ambient sound element not found");
+      return;
+    }
+    
+    // Play the ambient sound
+    this.ambientSound.play().then(() => {
+      console.log("✅ Ambient music started successfully");
+      Utils.logInfo("🎵 Ambient music started");
+    }).catch(e => {
+      console.warn("⚠️ Could not start ambient music (user interaction may be required):", e.message);
+      Utils.logWarn("⚠️ Ambient music requires user interaction to play");
+    });
+  }
+
+  /**
+   * Stop ambient music
+   */
+  stopAmbientMusic() {
+    console.log("🔇 stopAmbientMusic called");
+    
+    if (this.ambientSound) {
+      try {
+        this.ambientSound.pause();
+        this.ambientSound.currentTime = 0;
+        console.log("✅ Ambient music stopped");
+        Utils.logInfo("🔇 Ambient music stopped");
+      } catch (e) {
+        console.error("❌ Error stopping ambient music:", e);
+        Utils.logDebug("Could not stop ambient music");
+      }
+    } else {
+      console.warn("⚠️ Cannot stop - ambient sound not available");
+    }
   }
 
   // ========================================
@@ -328,12 +399,11 @@ class PlayerManager {
   playFootstep() {
     const currentTime = Date.now();
     if (currentTime - this.lastMoveTime > CONFIG.FOOTSTEP_INTERVAL) {
-      if (this.footstepSound?.components?.sound) {
-        try {
-          this.footstepSound.components.sound.playSound();
-        } catch (e) {
-          Utils.logDebug("Footstep sound not available");
-        }
+      if (this.footstepSound) {
+        this.footstepSound.currentTime = 0;
+        this.footstepSound.play().catch(() => {
+          // Silently fail if sound cannot play
+        });
       }
       this.lastMoveTime = currentTime;
     }
@@ -343,12 +413,11 @@ class PlayerManager {
    * Play collect sound
    */
   playCollectSound() {
-    if (this.collectSound?.components?.sound) {
-      try {
-        this.collectSound.components.sound.playSound();
-      } catch (e) {
-        Utils.logDebug("Collect sound not available");
-      }
+    if (this.collectSound) {
+      this.collectSound.currentTime = 0;
+      this.collectSound.play().catch(() => {
+        // Silently fail if sound cannot play
+      });
     }
   }
 
@@ -356,12 +425,11 @@ class PlayerManager {
    * Play win sound
    */
   playWinSound() {
-    if (this.winSound?.components?.sound) {
-      try {
-        this.winSound.components.sound.playSound();
-      } catch (e) {
-        Utils.logDebug("Win sound not available");
-      }
+    if (this.winSound) {
+      this.winSound.currentTime = 0;
+      this.winSound.play().catch(() => {
+        // Silently fail if sound cannot play
+      });
     }
   }
 }

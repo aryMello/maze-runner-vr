@@ -13,7 +13,7 @@ class GameController {
     this.movementController = null;
     this.inputController = null;
     this.cameraController = null;
-    this.vrAutoWalkController = null; // NEW
+    this.vrAutoWalkController = null;
     
     // Time limit
     this.timeLimit = 6 * 60 * 1000;
@@ -82,7 +82,7 @@ class GameController {
     this.cameraController = new CameraController(gameState, coordinateUtils);
     this.cameraController.init(this.camera);
     
-    // VR Auto-Walk controller (NEW)
+    // VR Auto-Walk controller
     this.vrAutoWalkController = new VRAutoWalkController(
       this.movementController,
       this.cameraController
@@ -133,6 +133,14 @@ class GameController {
     // Update UI
     uiManager.updateLeaderboard();
     playerManager.initSounds();
+    
+    console.log("🎮 About to start ambient music...");
+    
+    // Start ambient music with delay to ensure A-Frame is ready
+    setTimeout(() => {
+      console.log("🎮 Starting ambient music (delayed)...");
+      playerManager.startAmbientMusic();
+    }, 1000);
     
     const totalTreasures = gameState.treasures.length;
     if (uiManager.elements.treasureCount) {
@@ -269,6 +277,11 @@ class GameController {
       : (gameState.players[gameState.myPlayerId]?.treasures || 0);
     
     gameState.gameStarted = false;
+    
+    // Stop ambient music
+    if (playerManager && playerManager.stopAmbientMusic) {
+      playerManager.stopAmbientMusic();
+    }
     
     // Clear time limit timeout
     if (this.timeLimitTimeout) {

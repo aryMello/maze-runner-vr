@@ -317,6 +317,11 @@ class MovementController {
     this.stopMovementLoop();
     this.stopMovement();
   }
+
+  queueServerUpdate(){
+    // deprecated
+  }
+
 }
 
 // Export
