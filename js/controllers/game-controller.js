@@ -286,6 +286,36 @@ class GameController {
     }
     
     playerManager.playWinSound();
+    
+    // Save score to API
+    if (window.scoreIntegration) {
+      Utils.logInfo(`📊 Saving player score: ${myTreasures} treasures`);
+      scoreIntegration.saveScore(myTreasures).then((success) => {
+        if (success) {
+          Utils.logInfo("✅ Score saved successfully");
+          // Don't show win modal - score integration will handle redirect
+          return;
+        } else {
+          Utils.logWarn("⚠️ Score save failed, showing local win modal");
+          // Show local win modal if API fails
+          this.showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, payload.treasures);
+        }
+      });
+    } else {
+      Utils.logWarn("⚠️ Score integration not available, showing local win modal");
+      this.showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, payload.treasures);
+    }
+  }
+
+  /**
+   * Show local win modal (fallback)
+   * @param {string} winnerId
+   * @param {string} winnerName
+   * @param {boolean} isTimeUp
+   * @param {number} myTreasures
+   * @param {number} winnerTreasures
+   */
+  showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, winnerTreasures) {
 
     let timeStr = "N/A";
     if (gameState.startTime) {
@@ -322,7 +352,7 @@ class GameController {
     winModal.innerHTML = `
       <h1 style="color: white; font-size: 3em; margin: 0;">${message}</h1>
       <p style="color: white; font-size: 1.5em; margin: 20px 0;">Tempo: ${timeStr}</p>
-      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Vencedor: ${payload.treasures || 0} tesouros</p>
+      <p style="color: white; font-size: 1.2em; margin: 10px 0;">Vencedor: ${winnerTreasures || 0} tesouros</p>
       <p style="color: white; font-size: 1.2em; margin: 10px 0;">Você: ${myTreasures} tesouros</p>
       <button onclick="location.reload()" style="
         padding: 15px 40px;

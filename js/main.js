@@ -437,6 +437,7 @@ function toggleReady() {
   socket.emit("ready", { ready: isReady });
 }
 
+
 // ========================================
 // APPLICATION ENTRY POINT
 // ========================================
