@@ -1,14 +1,16 @@
 // ========================================
-// SCORE INTEGRATION MODULE
+// SCORE INTEGRATION MODULE - VERSÃO CORRIGIDA
 // Handles user authentication and score submission
 // ========================================
+
+import Utils from '../core/Utils.js';
 
 class ScoreIntegration {
   constructor() {
     this.userCode = null;
     this.userId = null;
-    this.apiBaseUrl = "https://upgraded-happiness-9rvrr9w9ppj3v64-3000.app.github.dev";
-    this.experienceId = 1;
+    this.apiBaseUrl = "https://base-presentation-vrar.onrender.com";
+    this.experienceId = 10;
     this.redirectDelay = 10000; // 10 seconds
     
     Utils.logInfo("📊 ScoreIntegration initialized");
@@ -92,7 +94,7 @@ class ScoreIntegration {
     Utils.logInfo(`📊 Saving score: ${score}`);
     
     try {
-      // Get user ID first
+      // ✅ CORREÇÃO: userC -> userId
       const userId = await this.getUserId();
       
       if (!userId) {
@@ -341,11 +343,6 @@ class ScoreIntegration {
 // Create singleton instance
 const scoreIntegration = new ScoreIntegration();
 
-// Initialize on page load
-document.addEventListener("DOMContentLoaded", function () {
-  scoreIntegration.init();
-});
-
 // Legacy function for backward compatibility
 function saveScores(pontos) {
   return scoreIntegration.saveScore(pontos);
@@ -359,3 +356,5 @@ if (typeof module !== 'undefined' && module.exports) {
 window.ScoreIntegration = ScoreIntegration;
 window.scoreIntegration = scoreIntegration;
 window.saveScores = saveScores;
+
+export default scoreIntegration;
