@@ -33,10 +33,13 @@ class GameController {
   }
 
   /**
-   * Initialize game
-   */
+ * Initialize game
+ */
   initGame() {
     Utils.logInfo("🎮 Initializing game...");
+    
+    // ✅ ADICIONAR: Inicializar score integration
+    this.initScoreIntegration();
     
     this.scene = document.querySelector("a-scene");
     this.camera = document.querySelector("[camera]");
@@ -198,9 +201,27 @@ class GameController {
   }
 
   /**
-   * Handle time up event
-   */
-  handleTimeUp() {
+ * Initialize score integration
+ */
+  initScoreIntegration() {
+    if (window.scoreIntegration) {
+      // Extrair código da URL e inicializar
+      const userCode = scoreIntegration.init();
+      
+      if (userCode) {
+        Utils.logInfo("✅ Score integration initialized with code:", userCode);
+      } else {
+        Utils.logWarn("⚠️ No user code found - score saving may not work");
+      }
+    } else {
+      Utils.logError("❌ scoreIntegration not loaded!");
+    }
+  }
+
+  /**
+ * Handle time up event
+ */
+  async handleTimeUp() {  // ✅ ADICIONAR async
     let winnerId = null;
     let maxTreasures = -1;
     let winnerName = "Ninguém";
@@ -215,7 +236,8 @@ class GameController {
     
     const myTreasures = gameState.players[gameState.myPlayerId]?.treasures || 0;
     
-    this.handleGameWon({
+    // ✅ USAR await
+    await this.handleGameWon({
       payload: {
         playerId: winnerId,
         playerName: winnerName,
@@ -261,10 +283,10 @@ class GameController {
   }
 
   /**
-   * Handle game won event
-   * @param {object} data
-   */
-  handleGameWon(data) {
+ * Handle game won event
+ * @param {object} data
+ */
+  async handleGameWon(data) {  // ✅ ADICIONAR async
     Utils.logInfo("🏆 Game won!");
     
     const payload = data.payload || data;
@@ -300,20 +322,26 @@ class GameController {
     
     playerManager.playWinSound();
     
-    // Save score to API
+    // ✅ CORREÇÃO: Verificar se scoreIntegration existe e está inicializado
     if (window.scoreIntegration) {
-      Utils.logInfo(`📊 Saving player score: ${myTreasures} treasures`);
-      scoreIntegration.saveScore(myTreasures).then((success) => {
+      try {
+        Utils.logInfo(`📊 Saving player score: ${myTreasures} treasures`);
+        
+        // ✅ USAR await ao invés de .then()
+        const success = await scoreIntegration.saveScore(myTreasures);
+        
         if (success) {
-          Utils.logInfo("✅ Score saved successfully");
-          // Don't show win modal - score integration will handle redirect
-          return;
+          Utils.logInfo("✅ Score saved successfully - API will handle redirect");
+          // O scoreIntegration.saveScore() já mostra o modal e redireciona
+          // Não fazer mais nada aqui
         } else {
           Utils.logWarn("⚠️ Score save failed, showing local win modal");
-          // Show local win modal if API fails
           this.showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, payload.treasures);
         }
-      });
+      } catch (error) {
+        Utils.logError("❌ Error saving score:", error);
+        this.showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, payload.treasures);
+      }
     } else {
       Utils.logWarn("⚠️ Score integration not available, showing local win modal");
       this.showLocalWinModal(winnerId, winnerName, isTimeUp, myTreasures, payload.treasures);
