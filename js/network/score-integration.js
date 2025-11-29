@@ -10,7 +10,7 @@ class ScoreIntegration {
     this.userCode = null;
     this.userId = null;
     this.apiBaseUrl = "https://base-presentation-vrar.onrender.com";
-    this.experienceId = 10;
+    this.experienceId = 2;
     this.redirectDelay = 10000; // 10 seconds
     
     Utils.logInfo("📊 ScoreIntegration initialized");
