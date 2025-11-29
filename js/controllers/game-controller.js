@@ -3,7 +3,7 @@
 // Orchestrates game initialization with VR support
 // ========================================
 
-import { scoreIntegration } from "../network/score-integration.js";
+import scoreIntegration from './network/score-integration.js';
 
 class GameController {
   constructor() {
