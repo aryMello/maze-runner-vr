@@ -20,6 +20,10 @@ let playerManager = null;
 function initializeGame() {
   Utils.logInfo("🚀 Initializing Maze Runner VR...");
   
+  // ✅ ADICIONAR: Inicializar score integration
+  scoreIntegration.init();
+  Utils.logInfo("✅ Score integration initialized");
+  
   // 1. Initialize utilities
   coordinateUtils = new CoordinateUtils(gameState);
   collisionUtils = new CollisionUtils(gameState);
@@ -72,7 +76,7 @@ function initSocket() {
       const handlers = new WSHandlers(socket);
       handlers.registerAll();
       
-      // Set socket in game controller
+      // ✅ gameController agora está importado e disponível
       gameController.setSocket(socket);
     })
     .catch((err) => {
@@ -404,6 +408,7 @@ function joinRoom(roomCode) {
       // Setup handlers
       const handlers = new WSHandlers(socket);
       handlers.registerAll();
+      // ✅ gameController agora está importado
       gameController.setSocket(socket);
       
       // Hide rooms list
@@ -444,6 +449,11 @@ function toggleReady() {
 
 window.addEventListener("load", () => {
   Utils.logInfo("🚀 Application starting...");
+  
+  // ✅ Debug log para verificar se os módulos foram importados
+  console.log("🔍 DEBUG: gameController imported?", !!gameController);
+  console.log("🔍 DEBUG: scoreIntegration imported?", !!scoreIntegration);
+  
   initializeGame();
 });
 

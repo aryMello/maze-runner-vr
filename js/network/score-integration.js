@@ -3,8 +3,6 @@
 // Handles user authentication and score submission
 // ========================================
 
-import Utils from '../core/Utils.js';
-
 class ScoreIntegration {
   constructor() {
     this.userCode = null;
@@ -356,5 +354,3 @@ if (typeof module !== 'undefined' && module.exports) {
 window.ScoreIntegration = ScoreIntegration;
 window.scoreIntegration = scoreIntegration;
 window.saveScores = saveScores;
-
-export default scoreIntegration;

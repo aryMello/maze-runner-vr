@@ -3,8 +3,6 @@
 // Orchestrates game initialization with VR support
 // ========================================
 
-import scoreIntegration from './network/score-integration.js';
-
 class GameController {
   constructor() {
     this.socket = null;
@@ -413,13 +411,10 @@ class GameController {
   }
 }
 
+// NO FINAL DO ARQUIVO (últimas 10 linhas)
 // Create singleton
 const gameController = new GameController();
 
-// Export
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = GameController;
-}
-
+// Manter estas:
 window.gameController = gameController;
 window.GameController = GameController;
